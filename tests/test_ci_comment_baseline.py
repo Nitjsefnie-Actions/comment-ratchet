@@ -139,6 +139,7 @@ def test_existing_base_records_bind_even_when_head_is_looser(repo):
     write_records(repo, {'x.py': [2, 6]})
     base = commit(repo, 'base policy')
     write_records(repo, {'x.py': [6, 6]})
+    commit(repo, 'looser head policy')
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert 'x.py' in result.stderr
@@ -153,6 +154,7 @@ def test_base_records_bind_even_when_head_is_deleted_or_invalid(repo):
             target.unlink()
         else:
             target.write_text(body)
+        commit(repo, 'head policy changed')
         assert cli(repo, '--base-ref', base).returncode == 0
 
 
