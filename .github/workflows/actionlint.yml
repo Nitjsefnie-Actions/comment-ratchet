@@ -29,9 +29,20 @@ name: actionlint
 # next one is the one nobody has thought about yet.
 
 on:
-  # Contribution events belong to tests.yml, whose aggregate needs this leg.
-  # Keeping the trigger unfiltered there lets documentation-only PRs report.
-  workflow_call:
+  push:
+    # Default branch only: a PR head already gets a pull_request run. An
+    # unfiltered push would schedule the same commit under another ref,
+    # which the concurrency group cannot collapse.
+    branches: [main]
+    # Deny-list, not an allow-list: a new path the gate should read must
+    # not silently stop triggering it. Workflow files, the hash-pinned
+    # tool manifest and action.yml are all inputs, so none is skipped.
+    # These four documentation files are not read by this job.
+    paths-ignore: [CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, LICENSE]
+  # Required PR checks must report even for documentation-only changes.
+  # A trigger path filter leaves the required context missing forever;
+  # running the short gate on every PR avoids that failure mode.
+  pull_request:
   workflow_dispatch:
 
 permissions:
