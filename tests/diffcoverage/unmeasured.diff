@@ -1,0 +1,7 @@
+diff --git a/run.py b/run.py
+index 0000000..1111111 100644
+--- a/run.py
++++ b/run.py
+@@ -33,0 +34,2 @@
++        base = policy.base_input(os.environ.get('BASE_REF', '')) if mode == 'check' else ''
++        if sys.argv[1:] == ['--validate-only']:
