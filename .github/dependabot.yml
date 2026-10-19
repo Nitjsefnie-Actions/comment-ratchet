@@ -28,3 +28,33 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:37"
+      timezone: Etc/UTC
+    commit-message:
+      prefix: ci
+      include: scope
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:43"
+      timezone: Etc/UTC
+    commit-message:
+      prefix: ci
+      include: scope
+  - package-ecosystem: pip
+    directory: /.github/workflows
+    schedule:
+      interval: weekly
+      day: wednesday
+      time: "04:49"
+      timezone: Etc/UTC
+    commit-message:
+      prefix: ci
+      include: scope

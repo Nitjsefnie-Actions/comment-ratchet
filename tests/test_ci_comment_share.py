@@ -259,3 +259,38 @@ def test_unresolved_node_names_missing_executable(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(shutil, 'which', lambda _executable: None)
     with pytest.raises(counter.MeasurementError, match='node'):
         counter.javascript_comments(tmp_path, ['a.js'])
+
+
+@pytest.mark.parametrize('name', ['bad.py', 'bad.js', 'bad.yaml', 'bad.sh', 'shell'])
+def test_unreadable_tracked_source_names_file(tmp_path, name):
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    path = tmp_path / name
+    path.write_bytes(b'#!/bin/sh\n# hi\n' if name == 'shell' else b'# hi\n')
+    subprocess.run(['git', '-C', str(tmp_path), 'add', name], check=True)
+    path.unlink()
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci/comment_share.py'),
+                             '--root', str(tmp_path)], capture_output=True, text=True)
+    assert result.returncode == 1
+    assert name in result.stderr
+
+
+@pytest.mark.parametrize('suffix', ['py', 'js', 'yaml', 'sh'])
+def test_invalid_utf8_names_file(tmp_path, suffix):
+    name = f'bad.{suffix}'
+    (tmp_path / name).write_bytes(b'# \xff\n')
+    with pytest.raises(counter.MeasurementError, match=name):
+        counter.measure_files(tmp_path, {name: counter.language_for(tmp_path / name)})
+
+
+def test_js_token_helper_preserves_semantic_line_breaks(tmp_path):
+    helper = ROOT / 'scripts/ci/js_comment_tokens.mjs'
+    source = tmp_path / 'tokens.js'
+    def tokens(text):
+        source.write_text(text)
+        result = subprocess.run(['node', str(helper), str(ESPREE), str(source), 'plain'],
+                                capture_output=True, text=True, check=True)
+        import json
+        return json.loads(result.stdout)
+    original = tokens('function f() { return 1; }')
+    assert tokens('function f() { /* comment */ return 1; }') == original
+    assert tokens('function f() { return\n1; }') != original

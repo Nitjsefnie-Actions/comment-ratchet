@@ -1,0 +1,130 @@
+name: tests
+
+# Linux-only checks cannot establish macOS portability. Both POSIX legs run
+# the same real-subprocess suite with Python and the locked JS tokenizer.
+# Contribution events live here so one aggregate can need every gate leg.
+on:
+  push:
+    # A PR head already runs below: an unfiltered push schedules the same
+    # commit a second time under another ref, beyond concurrency's reach.
+    branches: [main]
+  # Required checks must report even on documentation-only PRs. A trigger
+  # path filter would leave their context missing and block the merge.
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing pushes; later steps must not inherit a stored token.
+          persist-credentials: false
+      # ShellCheck ships with the image. A missing binary fails in seconds;
+      # an apt mirror fetch could instead hang until the job timeout.
+      - name: Check every shell file
+        # Recurse so a nested test helper cannot silently escape lint.
+        run: find tests -type f -name '*.sh' -exec shellcheck {} +
+
+  suites:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing in this job pushes. Leaving the token in .git/config
+          # lets any later subprocess reuse it.
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.14'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.17.0'
+          package-manager-cache: false
+      - name: Install the regression toolchain
+        # --require-hashes pins artifacts as well as versions. npm ci takes
+        # the committed lockfile and verifies its integrity fields.
+        run: |
+          python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run the regression suite
+        # Bare on purpose: the suite's own exit status is the verdict.
+        run: tests/run.sh
+
+  comment-share:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Judge the PR's own tree, including its local action. Full history
+          # carries the base object without depending on retained credentials.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check this tree with its own action
+        # The adoption gate explicitly exercises the checked-out PR head.
+        uses: ./ # zizmor: ignore[self-repository]
+        with:
+          mode: check
+          base-ref: ${{ github.event.pull_request.base.sha || github.sha }}
+
+  # The pinned actionlint accepts the documented ./ reusable-workflow syntax;
+  # zizmor's newer $/ recommendation is unsupported by that pinned parser.
+  actionlint:
+    uses: ./.github/workflows/actionlint.yml # zizmor: ignore[self-repository]
+  codeql:
+    uses: ./.github/workflows/codeql.yml # zizmor: ignore[self-repository]
+    permissions:
+      # The caller caps the reusable job's grants. Only analysis uploads
+      # need write access; the checkout and tests remain read-only.
+      security-events: write
+      contents: read
+  secrets:
+    uses: ./.github/workflows/secrets.yml # zizmor: ignore[self-repository]
+  audit:
+    uses: ./.github/workflows/audit.yml # zizmor: ignore[self-repository]
+
+  aggregate:
+    # Like claudit's aggregate: always report, including after a failed or
+    # cancelled ancestor. This tree has no classification skips, so every
+    # skipped, failed, cancelled or missing leg must fold red.
+    needs: [suites, shellcheck, comment-share, actionlint, codeql, secrets, audit]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check no tracked file carries a merge-conflict marker
+        # A conflict marker can look like Markdown prose to other gates.
+        run: |
+          # git grep exits 1 for no match and above 1 for an error: an
+          # unreadable tree must never be reported as marker-free.
+          found=0
+          git grep -nI -E '^(<{7}( |$)|>{7}( |$)|={7}$)' -- . || found=$?
+          if [ "$found" -gt 1 ]; then
+            echo "git grep exited $found, so no marker was looked for."
+            exit "$found"
+          fi
+          if [ "$found" -eq 0 ]; then
+            echo 'A merge-conflict marker is committed. Resolve it before merging.'
+            exit 1
+          fi
+      - name: Fold the leg results into one verdict
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/aggregate_gate.py
