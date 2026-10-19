@@ -152,14 +152,15 @@ def test_tighten_records_commit_stops_the_artifact_loop(tmp_path):
             assert not (runtime / 'ratchet-push').exists()
 
 
-@pytest.mark.parametrize('movement', ['unchanged', 'unrelated', 'conflict', 'rejected', 'race'])
+@pytest.mark.parametrize('movement', ['unchanged', 'unrelated', 'records', 'conflict', 'rejected', 'race'])
 def test_ratchet_push_data_with_real_git(tmp_path, movement):
     from tests.test_ci_comment_baseline import init_repo, commit, git, write_records
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
     git(origin, 'branch', '-M', 'main')
-    write_records(origin, {'x.py': [4, 6], 'y.py': [4, 6]})
+    write_records(origin, {'x.py': [4, 6], 'y.py': [4, 6]}).write_text(
+        json.dumps({'x.py': [4, 6], 'y.py': [4, 6]}, indent=2)+'\n')
     (origin / 'source.py').write_text('raise RuntimeError("must never execute")\n')
     base = commit(origin, 'measured base')
     remote = tmp_path / 'remote.git'
@@ -169,9 +170,12 @@ def test_ratchet_push_data_with_real_git(tmp_path, movement):
     data.mkdir(parents=True)
     (data / 'base.txt').write_text(base+'\n')
     (data / 'comment-share.json').write_text(json.dumps({'x.py': [3, 6], 'y.py': [4, 6]}, indent=2)+'\n')
-    if movement in ('unrelated', 'conflict'):
+    if movement in ('unrelated', 'records', 'conflict'):
         if movement == 'unrelated':
             (origin / 'source.py').write_text('raise RuntimeError("new source must not execute")\n')
+        elif movement == 'records':
+            write_records(origin, {'x.py': [4, 6], 'y.py': [3, 6]}).write_text(
+                json.dumps({'x.py': [4, 6], 'y.py': [3, 6]}, indent=2)+'\n')
         else:
             write_records(origin, {'x.py': [2, 6], 'y.py': [4, 6]})
         commit(origin, 'main moved')
@@ -218,7 +222,8 @@ exec "{real_git}" "$@"
         assert tip == race
     else:
         assert git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip) == '.github/comment-share.json'
-        assert json.loads(git(remote, 'show', f'{tip}:.github/comment-share.json')) == {'x.py': [3, 6], 'y.py': [4, 6]}
+        assert json.loads(git(remote, 'show', f'{tip}:.github/comment-share.json')) == {
+            'x.py': [3, 6], 'y.py': [3 if movement == 'records' else 4, 6]}
         assert git(remote, 'show', '-s', '--format=%an', tip) == 'github-actions[bot]'
         assert not (runtime / 'ratchet-repo/source.py').exists()
     if movement in ('conflict', 'race'):
@@ -318,3 +323,19 @@ else:
         else:
             assert 'Python coverage: 80%.' in sent['body']
     assert not (tmp_path / 'executed').exists()
+
+
+def test_ratchet_artifact_listing_does_not_swallow_api_failure(tmp_path):
+    binary = tmp_path / 'bin'
+    binary.mkdir()
+    stub = binary / 'gh'
+    stub.write_text('#!/bin/sh\nexit 42\n')
+    stub.chmod(0o755)
+    step = next(s for s in workflow('ratchet-push.yml')['jobs']['push']['steps'] if s.get('id') == 'list')
+    output = tmp_path / 'output'
+    result = subprocess.run(['bash', '-e', '-c', step['run']], cwd=tmp_path,
+                            env=dict(os.environ, PATH=str(binary)+os.pathsep+os.environ['PATH'],
+                                     GH_TOKEN='test', REPO='test/repo', RUN_ID='1', GITHUB_OUTPUT=str(output)),
+                            capture_output=True, text=True)
+    assert result.returncode == 42
+    assert not output.exists()

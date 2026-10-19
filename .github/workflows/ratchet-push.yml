@@ -58,6 +58,9 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
+          # The API failure must remain fatal through sort; it cannot mean
+          # that the triggering run had no artifact.
+          set -euo pipefail
           names="$(gh api -H 'Cache-Control: no-cache' --paginate \
             "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
             --jq '.artifacts[] | select(.expired != true) | .name' \
