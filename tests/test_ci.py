@@ -133,7 +133,8 @@ def test_tighten_records_commit_stops_the_artifact_loop(tmp_path):
     commit(repo, 'old records')
     steps = workflow('tests.yml')['jobs']['ratchet']['steps']
     stage = next(step for step in steps if step.get('id') == 'stage')
-    upload = next(step for step in steps if step.get('with', {}).get('name') == 'ratchet-push')
+    upload, = (step for step in steps
+               if 'name' in step.get('with', {}) and 'path' in step['with'])
     for number, want in [(1, True), (2, False)]:
         runtime = tmp_path / f'run-{number}'
         runtime.mkdir()
@@ -248,8 +249,8 @@ def test_coverage_artifact_only_from_measured_green_pr(event, result, cancelled,
                      needs={'suites': {'result': result}},
                      github={'event_name': event}) is want
     assert job['permissions'] == {'contents': 'read'}
-    upload = next(step for step in job['steps']
-                  if step.get('with', {}).get('name') == 'python-coverage-comment')
+    upload, = (step for step in job['steps']
+               if 'name' in step.get('with', {}) and 'path' in step['with'])
     # No step-level bypass can turn a failed report into a posted number.
     assert all('if' not in step for step in job['steps'])
     consumer = workflow('coverage-comment.yml')
@@ -263,16 +264,14 @@ def test_coverage_xml_has_one_uploading_cell(os_name, want):
     jobs = workflow('tests.yml')['jobs']
     # Artifact names share one run-wide namespace; exactly one matrix cell
     # supplies XML and exactly one job supplies the rendered comment.
-    uploads = [(name, step) for name, job in jobs.items() for step in job.get('steps', [])
-               if step.get('uses', '').startswith('actions/upload-artifact@')
-               and step['with']['name'] in ('coverage-xml', 'python-coverage-comment')]
-    xml = uploads[0][1]
+    xml, = (step for step in jobs['suites']['steps']
+            if 'name' in step.get('with', {}) and 'path' in step['with'])
     assert condition(xml['if'], matrix={'os': os_name}) is want
     writer = next(step for step in jobs['suites']['steps']
                   if step.get('name') == 'Write the coverage XML')
     assert condition(writer['if'], matrix={'os': os_name}) is want
-    download = next(step for step in jobs['diff-coverage']['steps']
-                    if step.get('uses', '').startswith('actions/download-artifact@'))
+    download, = (step for step in jobs['diff-coverage']['steps']
+                 if 'name' in step.get('with', {}) and 'path' not in step['with'])
     assert download['with']['name'] == xml['with']['name']
 
 
