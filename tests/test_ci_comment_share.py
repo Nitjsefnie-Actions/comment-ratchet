@@ -93,7 +93,9 @@ CASES = [
     ('js_literals', 'js', 'const a = "//"; const b = `// ${1}`; const c = /\\/\\//; // a\n/* b c */\n', (9, 51)),
     ('mjs', 'mjs', 'export const x = 1; // hi\n', (4, 19)),
     ('cjs', 'cjs', 'module.exports = 1; // hi\n', (4, 21)),
+    ('cjs_top_level_return', 'cjs', '// c\nreturn f();\n', (3, 13)),
     ('jsx', 'jsx', 'const el = <div title="//">{/* hi */}text</div>; // é\n', (10, 46)),
+    ('jsx_top_level_return', 'jsx', '// c\nreturn <div>// data</div>; /* d */\n', (8, 32)),
     ('yaml', 'yaml', 'a: "prefix # x"\nb: \'prefix # y\'\nc: a#b # yes\n# ok\n', (7, 36)),
     ('yaml_quotes', 'yml', 'a: "escaped \\" # still quoted" # é\nb: \'it\'\'s # quoted\' # z\n', (5, 46)),
     ('yaml_plain_quote', 'yaml', "name: it's plain # yes\n", (4, 18)),
@@ -113,6 +115,54 @@ def test_counts(case: str, suffix: str, source: str, want: tuple[int, int],
     language = counter.language_for(path)
     assert language is not None
     assert counter.measure_files(tmp_path, {path.name: language}) == {path.name: want}
+
+
+JS_PARSE_CASES = [
+    ('module', '// é😀\nexport const x = "//"; /* c */\n', (13, 31)),
+    ('script', '// c\nwith (x) { f(); } /* d */\n', (8, 21)),
+    ('commonjs', '// c\nwith (x) { return f(); } /* d */\n', (8, 27)),
+    ('async_body', '// c\nreturn await f(); /* d */\n', (8, 23)),
+]
+
+
+@pytest.mark.parametrize('suffix', ['js', 'cjs', 'jsx'])
+@pytest.mark.parametrize('case,source,want', JS_PARSE_CASES, ids=[c[0] for c in JS_PARSE_CASES])
+def test_javascript_parse_forms_counts_and_cli(case, source, want, suffix, tmp_path):
+    if not (ESPREE / 'espree' / 'package.json').is_file():
+        pytest.skip('espree is not installed')
+    name = f'{case}.{suffix}'
+    (tmp_path / name).write_text(source, encoding='utf-8')
+    assert counter.measure_files(tmp_path, {name: 'javascript'}) == {name: want}
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    subprocess.run(['git', '-C', str(tmp_path), 'add', name], check=True)
+    result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
+                             '--report', '--root', str(tmp_path)],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert not result.stderr
+    assert f'{name}\t{want[0]}\t{want[1]}\t' in result.stdout
+
+
+@pytest.mark.parametrize('name,source', [
+    ('bad.js', 'const = 1;'),
+    ('bad.cjs', 'const = 1;'),
+    ('bad.jsx', 'const = 1;'),
+    ('return.mjs', '// c\nreturn f();\n'),
+    ('async_body.mjs', '// c\nreturn await f();\n'),
+    ('script.mjs', '// c\nwith (x) { f(); }\n'),
+])
+def test_javascript_invalid_forms_fail_cli(name, source, tmp_path):
+    if not (ESPREE / 'espree' / 'package.json').is_file():
+        pytest.skip('espree is not installed')
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    (tmp_path / name).write_text(source, encoding='utf-8')
+    subprocess.run(['git', '-C', str(tmp_path), 'add', name], check=True)
+    result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
+                             '--report', '--root', str(tmp_path)],
+                            capture_output=True, text=True)
+    assert result.returncode == 1
+    assert name in result.stderr
+    assert not result.stdout
 
 
 def test_tracked_universe_and_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
