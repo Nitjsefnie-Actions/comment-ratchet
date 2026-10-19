@@ -107,8 +107,9 @@ Python subprocesses, using the hash-pinned coverage toolchain. macOS runs the
 same regression suite without measurement. Coverage is informational: there
 is no new coverage floor or required-checks file.
 
-For a green Ubuntu PR suite, the rendered whole-run Python coverage table and
-PR number are uploaded as data. The separate coverage-comment workflow holds
+For a green Ubuntu PR suite, the rendered patch-coverage report and PR number
+are uploaded as data. The report covers the lines the pull request adds or
+changes and names missed lines. The separate coverage-comment workflow holds
 the conversation write token, resolves the destination from the triggering
 event, validates the artifact's PR number, and posts or updates one comment.
 It checks out no PR code and executes nothing from the artifact. Missing
