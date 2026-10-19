@@ -15,9 +15,17 @@
     1578,
     2493
   ],
+  ".github/workflows/coverage-comment.yml": [
+    3310,
+    9333
+  ],
   ".github/workflows/pr-gate.yml": [
     403,
     1059
+  ],
+  ".github/workflows/ratchet-push.yml": [
+    2381,
+    6742
   ],
   ".github/workflows/scorecard.yml": [
     593,
@@ -28,8 +36,8 @@
     2543
   ],
   ".github/workflows/tests.yml": [
-    1797,
-    4007
+    2340,
+    6864
   ],
   "tests/run.sh": [
     18,

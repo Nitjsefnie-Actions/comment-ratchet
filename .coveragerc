@@ -1,0 +1,13 @@
+# The suite starts the ported scripts in subprocesses, including python -I.
+# The subprocess patch starts coverage inside those interpreters; parallel
+# data is combined before any report reads it. Only the action's Python is
+# included in the human-facing report, not the test harness.
+[run]
+parallel = True
+patch = subprocess
+source = ${COVERAGE_SOURCE_ROOT?}
+
+[report]
+include =
+    */scripts/ci/*.py
+    */run.py
