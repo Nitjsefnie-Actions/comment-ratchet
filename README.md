@@ -11,7 +11,7 @@ and `comment_baseline.py`.
 ## Install
 
 Save this workflow as `.github/workflows/comment-share.yml`. Change `main` to
-your default branch. The action reference is pinned to the v1.0.0 release
+your default branch. The action reference is pinned to the v1.1.0 release
 commit.
 
 ```yaml
@@ -35,7 +35,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: Nitjsefnie-Actions/comment-ratchet@721426819be9e05deb76d56364f671b87fa05fbf # v1.0.0
+      - uses: Nitjsefnie-Actions/comment-ratchet@ad5d027662f17593523ee8b8300f037489402f43 # v1.1.0
         with:
           target: '15'
           records: '.github/comment-share.json'
