@@ -9,14 +9,29 @@ try {
   const comments = files.map((file) => {
     try {
       const source = readFileSync(file, 'utf8');
-      const parsed = espree.parse(source, {
-        ecmaVersion: 'latest',
-        sourceType: 'module',
-        comment: true,
-        range: true,
-        ecmaFeatures: { jsx: file.endsWith('.jsx') },
-      });
-      return parsed.comments.map(({ range }) => source.slice(...range));
+      const forms = [{ sourceType: 'module' }];
+      if (!file.endsWith('.mjs')) {
+        forms.push(
+          { sourceType: 'script' },
+          { sourceType: 'commonjs' },
+          // Evaluator bodies can combine top-level return and await.
+          { sourceType: 'module', ecmaFeatures: { globalReturn: true } },
+        );
+      }
+      for (const [index, form] of forms.entries()) {
+        try {
+          const parsed = espree.parse(source, {
+            ...form,
+            ecmaVersion: 'latest',
+            comment: true,
+            range: true,
+            ecmaFeatures: { jsx: file.endsWith('.jsx'), ...form.ecmaFeatures },
+          });
+          return parsed.comments.map(({ range }) => source.slice(...range));
+        } catch (error) {
+          if (index === forms.length - 1) throw error;
+        }
+      }
     } catch (error) {
       throw new Error(`${file}: ${error.message}`);
     }
