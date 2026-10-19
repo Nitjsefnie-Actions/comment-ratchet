@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Fold every required CI leg into one fail-closed verdict."""
+"""Fold the tests workflow's required legs into one fail-closed verdict."""
 import json
 import os
 import sys
 
-LEGS = ('suites', 'shellcheck', 'comment-share', 'actionlint', 'codeql', 'secrets', 'audit')
+LEGS = ('suites', 'shellcheck', 'comment-share', 'codeql', 'secrets', 'audit')
 
 
 def main() -> int:

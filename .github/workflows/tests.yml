@@ -121,8 +121,6 @@ jobs:
 
   # The pinned actionlint accepts the documented ./ reusable-workflow syntax;
   # zizmor's newer $/ recommendation is unsupported by that pinned parser.
-  actionlint:
-    uses: ./.github/workflows/actionlint.yml # zizmor: ignore[self-repository]
   codeql:
     uses: ./.github/workflows/codeql.yml # zizmor: ignore[self-repository]
     permissions:
@@ -139,7 +137,8 @@ jobs:
     # Like claudit's aggregate: always report, including after a failed or
     # cancelled ancestor. This tree has no classification skips, so every
     # skipped, failed, cancelled or missing leg must fold red.
-    needs: [suites, shellcheck, comment-share, actionlint, codeql, secrets, audit]
+    # actionlint reports independently; needs can only name this workflow's legs.
+    needs: [suites, shellcheck, comment-share, codeql, secrets, audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

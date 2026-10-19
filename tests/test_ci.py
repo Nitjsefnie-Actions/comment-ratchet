@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-LEGS = ('suites', 'shellcheck', 'comment-share', 'actionlint', 'codeql', 'secrets', 'audit')
+LEGS = ('suites', 'shellcheck', 'comment-share', 'codeql', 'secrets', 'audit')
 
 
 def fold(results):
@@ -339,3 +339,20 @@ def test_ratchet_artifact_listing_does_not_swallow_api_failure(tmp_path):
                             capture_output=True, text=True)
     assert result.returncode == 42
     assert not output.exists()
+
+
+def test_actionlint_is_a_standalone_required_check():
+    lint = workflow('actionlint.yml')
+    triggers = lint['on']
+    assert 'pull_request' in triggers
+    assert not triggers['pull_request']
+    assert triggers['push']['branches'] == ['main']
+    assert 'workflow_dispatch' in triggers
+    assert 'workflow_call' not in triggers
+    job = lint['jobs']['actionlint']
+    assert job.get('name', 'actionlint') == 'actionlint'
+    assert 'runs-on' in job and 'uses' not in job
+    tests = workflow('tests.yml')['jobs']
+    for caller in tests.values():
+        assert Path(caller.get('uses', '').split('@', 1)[0]).name != 'actionlint.yml'
+    assert set(tests['aggregate']['needs']) == set(LEGS)
