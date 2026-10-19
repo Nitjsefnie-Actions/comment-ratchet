@@ -39,7 +39,9 @@ if TYPE_CHECKING:
 ROOT = Path(__file__).resolve().parents[2]
 SUFFIXES = {'.py': 'python', '.js': 'javascript', '.jsx': 'javascript',
             '.mjs': 'javascript', '.cjs': 'javascript', '.yaml': 'yaml',
-            '.yml': 'yaml', '.sh': 'shell'}
+            '.yml': 'yaml', '.sh': 'shell', '.ts': 'typescript',
+            '.tsx': 'typescript', '.mts': 'typescript', '.cts': 'typescript',
+            '.sql': 'sql'}
 SHELLS = {'sh', 'bash', 'dash', 'ash', 'ksh', 'mksh', 'zsh'}
 BOUNDARY = ' \t\n;&|()<>'
 HEREDOC = re.compile(r'<<(-?)[ \t]*((?:[^\s<>|;&()\\\'"`]|\\.|\'[^\']*\'|"[^"]*")+)')
@@ -75,7 +77,7 @@ def language_for(path: Path) -> str | None:
 
 
 def tracked_sources(root: Path = ROOT) -> dict[str, str]:
-    """Return git-tracked relative paths mapped to the four languages."""
+    """Return git-tracked relative paths mapped to their languages."""
     listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z'],
                             capture_output=True, check=True, timeout=30)
     sources = {}
@@ -435,6 +437,89 @@ def javascript_comments(root: Path, paths: list[str]) -> dict[str, int]:
             for rel, groups in zip(paths, comments, strict=True)}
 
 
+def typescript_comments(root: Path, paths: list[str]) -> dict[str, int]:
+    if not paths:
+        return {}
+    node = shutil.which('node')
+    if node is None:
+        raise MeasurementError('node executable not found')
+    helper = Path(__file__).with_name('ts_comment_ranges.mjs')
+    try:
+        result = subprocess.run(
+            [node, str(helper)],
+            input=json.dumps([str(root / rel) for rel in paths]),
+            capture_output=True, text=True, check=True, timeout=60)
+    except subprocess.CalledProcessError as error:
+        raise MeasurementError(error.stderr.strip()) from error
+    except (OSError, subprocess.SubprocessError) as error:
+        raise MeasurementError(f'node/typescript measurement failed: {error}') from error
+    comments = json.loads(result.stdout)
+    return {rel: sum(non_whitespace_bytes(comment) for comment in groups)
+            for rel, groups in zip(paths, comments, strict=True)}
+
+
+SQL_IDENTIFIER = re.compile(r'(?:[A-Za-z_]|[^\x00-\x7f])(?:[A-Za-z_0-9$]|[^\x00-\x7f])*')
+SQL_DOLLAR_QUOTE = re.compile(r'\$(?:(?:[A-Za-z_]|[^\x00-\x7f])(?:[A-Za-z_0-9]|[^\x00-\x7f])*)?\$')
+
+
+def sql_quote_end(text: str, start: int, escape: bool = False) -> int:
+    quote = text[start]
+    index = start + 1
+    while index < len(text):
+        if escape and text[index] == '\\':
+            index += 2
+        elif text[index] == quote:
+            if text[index:index + 2] == quote * 2:
+                index += 2
+            else:
+                return index + 1
+        else:
+            index += 1
+    raise MeasurementError('unterminated SQL string or identifier')
+
+
+def sql_comments(text: str) -> int:
+    index = count = 0
+    while index < len(text):
+        start = index
+        if text.startswith('--', index):
+            match = re.match(r'[^\r\n]*', text[index:])
+            assert match is not None
+            index += match.end()
+            count += non_whitespace_bytes(text[start:index])
+        elif text.startswith('/*', index):
+            depth = 1
+            index += 2
+            while index < len(text) and depth:
+                if text.startswith('/*', index):
+                    depth += 1
+                    index += 2
+                elif text.startswith('*/', index):
+                    depth -= 1
+                    index += 2
+                else:
+                    index += 1
+            if depth:
+                raise MeasurementError('unterminated SQL block comment')
+            count += non_whitespace_bytes(text[start:index])
+        elif text[index:index + 2] in ("E'", "e'"):
+            index = sql_quote_end(text, index + 1, escape=True)
+        elif text[index] in "'\"":
+            index = sql_quote_end(text, index)
+        elif text[index] == '$' and (match := SQL_DOLLAR_QUOTE.match(text, index)):
+            end = text.find(match[0], match.end())
+            if end == -1:
+                raise MeasurementError('unterminated SQL dollar quote')
+            index = end + len(match[0])
+        elif match := SQL_IDENTIFIER.match(text, index):
+            # Consume the whole identifier so its dollars and final E cannot
+            # open a dollar quote or an escape string halfway through a name.
+            index = match.end()
+        else:
+            index += 1
+    return count
+
+
 def measure_files(root: Path = ROOT, sources: dict[str, str] | None = None
                   ) -> dict[str, tuple[int, int]]:
     """Return path -> (comment bytes, non-whitespace bytes), without policy.
@@ -446,6 +531,8 @@ def measure_files(root: Path = ROOT, sources: dict[str, str] | None = None
     sources = tracked_sources(root) if sources is None else sources
     js_paths = [rel for rel, language in sources.items() if language == 'javascript']
     js_counts = javascript_comments(root, js_paths)
+    ts_paths = [rel for rel, language in sources.items() if language == 'typescript']
+    ts_counts = typescript_comments(root, ts_paths)
     measured = {}
     for rel, language in sources.items():
         try:
@@ -456,6 +543,10 @@ def measure_files(root: Path = ROOT, sources: dict[str, str] | None = None
                 comments = quoted_comments(text, shell=language == 'shell')
             elif language == 'javascript':
                 comments = js_counts[rel]
+            elif language == 'typescript':
+                comments = ts_counts[rel]
+            elif language == 'sql':
+                comments = sql_comments(text)
             else:
                 raise MeasurementError(f'unsupported language: {language}')
             measured[rel] = comments, non_whitespace_bytes(text)

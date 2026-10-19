@@ -132,3 +132,18 @@ def test_bare_uses_defaults_from_metadata(repo):
     commit(repo, 'exact seed')
     result = action(repo, **env)
     assert result.returncode == 0, result.stderr
+
+
+def test_typescript_uses_action_dependency_from_consumer_checkout(repo):
+    marker = repo / 'executed'
+    package = repo / 'node_modules' / 'typescript'
+    package.mkdir(parents=True)
+    (package / 'package.json').write_text('{"main":"index.js"}')
+    (package / 'index.js').write_text(
+        f'require("node:fs").writeFileSync({str(marker)!r}, "executed"); throw Error("consumer");')
+    (repo / 'a.ts').write_text('// c\nexport const x = 1;\n')
+    git(repo, 'add', 'a.ts')
+    result = action(repo, MODE='tighten', NODE_PATH=str(repo / 'node_modules'))
+    assert result.returncode == 0, result.stderr
+    assert json.loads((repo / '.github/comment-share.json').read_text())['a.ts'] == [3, 18]
+    assert not marker.exists()

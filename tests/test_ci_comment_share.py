@@ -261,7 +261,8 @@ def test_unresolved_node_names_missing_executable(tmp_path: Path, monkeypatch):
         counter.javascript_comments(tmp_path, ['a.js'])
 
 
-@pytest.mark.parametrize('name', ['bad.py', 'bad.js', 'bad.yaml', 'bad.sh', 'shell'])
+@pytest.mark.parametrize('name', ['bad.py', 'bad.js', 'bad.yaml', 'bad.sh', 'shell',
+                                  'bad.ts', 'bad.tsx', 'bad.mts', 'bad.cts', 'bad.sql'])
 def test_unreadable_tracked_source_names_file(tmp_path, name):
     subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
     path = tmp_path / name
@@ -294,3 +295,167 @@ def test_js_token_helper_preserves_semantic_line_breaks(tmp_path):
     original = tokens('function f() { return 1; }')
     assert tokens('function f() { /* comment */ return 1; }') == original
     assert tokens('function f() { return\n1; }') != original
+
+
+TS_CASES = [
+    ('line', '// c\nlet x=1;\n', (3, 10)),
+    ('block', '/* c */let x=1;\n', (5, 12)),
+    ('doc', '/** c */let x=1;\n', (6, 13)),
+    ('adjacent', '/**a*//*b*///c\nlet x=1;/*d*/', (19, 26)),
+    ('single_string', "let x='// /*'; // c\n", (3, 15)),
+    ('double_string', 'let x="// /*"; // c\n', (3, 15)),
+    ('template', 'let x=`// /*`; // c\n', (3, 15)),
+    ('template_expression', 'let x=`/*${1/*c*/} //`; // d\n', (8, 24)),
+    ('nested_template', 'let x=`a${`b${1/*c*/}/*`} //`; // d\n', (8, 31)),
+    ('template_middle', 'let x=`a${1}/*${2/*c*/}//`; // d\n', (8, 29)),
+    ('leading_literal_comment', 'let x=/*c*/"//"; // d\n', (8, 18)),
+    ('regex', r'let x=/[/*]\/\//; // c' + '\n', (3, 19)),
+    ('division', 'let x=4/2; /* c */\n', (5, 14)),
+    ('hashbang', '#!/usr/bin/env node\nlet x=1;\n', (18, 25)),
+    ('utf8', '// é😀\nlet x="ø";\n', (8, 18)),
+    ('unicode_space', '// a\u0085b\u2003c\nlet x=1;\n', (5, 12)),
+    ('empty', '', (0, 0)),
+    ('whitespace', ' \t\n\u2003', (0, 0)),
+]
+
+
+@pytest.mark.parametrize('suffix', ['ts', 'tsx', 'mts', 'cts'])
+@pytest.mark.parametrize('case,source,want', TS_CASES, ids=[c[0] for c in TS_CASES])
+def test_typescript_counts(suffix, case, source, want, tmp_path):
+    path = tmp_path / f'sample.{suffix}'
+    path.write_text(source, encoding='utf-8')
+    assert counter.language_for(path) == 'typescript'
+    measured = counter.measure_files(tmp_path, {path.name: 'typescript'})
+    assert measured == {path.name: want}
+    if want == (0, 0):
+        assert counter.share(measured[path.name]) == 0
+
+
+TSX_CASES = [
+    ('line_text', 'const x=<div>// text</div>;', (0, 25)),
+    ('block_text', 'const x=<div>/* text */</div>;', (0, 27)),
+    ('multiline_text', 'const x=<div>\n// text\n/* text */\n</div>;', (0, 33)),
+    ('expression_comment', 'const x=<div>{/* c */}</div>;', (5, 26)),
+    ('attribute', 'const x=<div title="// /*"/>; // c\n', (3, 29)),
+    ('fragment', 'const x=<>// text{/* c */}<b>/*text*/</b></>; // d\n', (8, 44)),
+    ('white_text', 'const x=<div> \n <b/> \t </div>; // c\n', (3, 26)),
+]
+
+
+@pytest.mark.parametrize('suffix', ['ts', 'tsx', 'mts', 'cts'])
+@pytest.mark.parametrize('case,source,want', TSX_CASES, ids=[c[0] for c in TSX_CASES])
+def test_tsx_counts(suffix, case, source, want, tmp_path):
+    path = tmp_path / f'sample.{suffix}'
+    path.write_text(source, encoding='utf-8')
+    if suffix == 'tsx':
+        assert counter.measure_files(tmp_path, {path.name: 'typescript'}) == {path.name: want}
+    else:
+        with pytest.raises(counter.MeasurementError, match=path.name):
+            counter.measure_files(tmp_path, {path.name: 'typescript'})
+
+
+SQL_CASES = [
+    ('line', '-- c\nselect 1;\n', (3, 11)),
+    ('cr_line', '-- c\rselect 1;\r', (3, 11)),
+    ('eof_line', 'select 1;-- c', (3, 11)),
+    ('block', '/* c */select 1;', (5, 13)),
+    ('nested', '/* a /* b */ c */select 1;', (11, 19)),
+    ('adjacent', '/*a*//*b*/--c\nselect 1;', (13, 21)),
+    ('single', "select '-- /*';-- c\n", (3, 16)),
+    ('single_double', "select 'a''-- /*';-- c\n", (3, 19)),
+    ('identifier', 'select "-- /*";-- c\n', (3, 16)),
+    ('identifier_double', 'select "a""-- /*";-- c\n', (3, 19)),
+    ('plain_backslash', "select 'a\\';-- c\n", (3, 14)),
+    ('escape_upper', "select E'a\\'-- /*';-- c\n", (3, 20)),
+    ('escape_lower', "select e'a\\'-- /*';-- c\n", (3, 20)),
+    ('escape_backslash', "select E'a\\\\';-- c\n", (3, 16)),
+    ('escape_doubled', "select E'a''-- /*';-- c\n", (3, 20)),
+    ('escape_doubled_then_backslash', "select E'a''b\\'--c';-- d\n", (3, 22)),
+    ('embedded_e', "select nameE'a\\';-- c\n", (3, 19)),
+    ('dollar_empty', 'select $$-- /*$$;-- c\n', (3, 18)),
+    ('dollar_tag', 'select $tag$-- /*$tag$;-- c\n', (3, 24)),
+    ('dollar_case', 'select $tag$--$TAG$/*$tag$;-- c\n', (3, 29)),
+    ('dollar_tag_chars', 'select $_a9$--$_a9$;-- c\n', (3, 22)),
+    ('dollar_tag_unicode', 'select $é$--$é$;-- c\n', (3, 20)),
+    ('parameter', 'select $1;-- c\n', (3, 12)),
+    ('numeric_tag_nearmiss', 'select $1$-- c\n', (3, 12)),
+    ('tag_punctuation_nearmiss', 'select $ta-g$-- c\n', (3, 15)),
+    ('identifier_dollar', 'select a$tag$-- c\n', (3, 15)),
+    ('identifier_double_dollar', 'select a$$-- c\n', (3, 12)),
+    ('identifier_unicode_dollar', 'select é$tag$-- c\n', (3, 16)),
+    ('separated_dollar', 'select a $tag$--$tag$;-- c\n', (3, 23)),
+    ('utf8', '-- é😀\nselect 1;\n', (8, 16)),
+    ('unicode_space', '-- a\u0085b\u2003c\nselect 1;\n', (5, 13)),
+    ('empty', '', (0, 0)),
+    ('whitespace', ' \t\n\u2003', (0, 0)),
+]
+
+
+@pytest.mark.parametrize('case,source,want', SQL_CASES, ids=[c[0] for c in SQL_CASES])
+def test_sql_counts(case, source, want, tmp_path):
+    path = tmp_path / 'sample.sql'
+    path.write_text(source, encoding='utf-8')
+    assert counter.language_for(path) == 'sql'
+    measured = counter.measure_files(tmp_path, {path.name: 'sql'})
+    assert measured == {path.name: want}
+    if want == (0, 0):
+        assert counter.share(measured[path.name]) == 0
+
+
+BAD_TS = [
+    'const = 1;', 'let x="open', '/* open', 'let x=`open',
+    'let x=/[/', 'function f( {',
+]
+BAD_SQL = [
+    "select 'open", 'select "open', 'select $$open', 'select $tag$open',
+    'select $tag$open$TAG$', '/* open', '/* outer /* inner */', '/* outer /* inner',
+    "select 'a\\'-- c\n'",
+    "select E'a\\'", "select e'a\\'",
+]
+
+
+@pytest.mark.parametrize('name,source', [
+    (f'bad.{ext}', source) for ext in ['ts', 'tsx', 'mts', 'cts'] for source in BAD_TS
+] + [(f'bad.{ext}', 'const x=<div/>;') for ext in ['ts', 'mts', 'cts']]
+  + [('bad.tsx', 'const x=<div>')]
+  + [('bad.tsx', 'const x=<number>1;')]
+  + [('bad.sql', source) for source in BAD_SQL])
+def test_typescript_sql_failure_names_file(name, source, tmp_path):
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    (tmp_path / name).write_text(source)
+    subprocess.run(['git', '-C', str(tmp_path), 'add', name], check=True)
+    result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
+                             '--report', '--root', str(tmp_path)],
+                            capture_output=True, text=True)
+    assert result.returncode == 1
+    assert name in result.stderr
+    assert not result.stdout
+
+
+def test_typescript_sql_report_reproduction(tmp_path):
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    sources = {'a.ts': '// c\nexport const x = 1;\n',
+               'b.sql': '-- c\nselect 1;\n', 'c.py': '# c\nx=1\n',
+               'types.d.ts': '/** c */declare const x: number;\n'}
+    for name, source in sources.items():
+        (tmp_path / name).write_text(source)
+    subprocess.run(['git', '-C', str(tmp_path), 'add', *sources], check=True)
+    (tmp_path / 'untracked.ts').write_text('// ignored\n')
+    (tmp_path / 'untracked.sql').write_text('-- ignored\n')
+    assert counter.tracked_sources(tmp_path) == {
+        'a.ts': 'typescript', 'b.sql': 'sql', 'c.py': 'python', 'types.d.ts': 'typescript'}
+    result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
+                             '--report', '--root', str(tmp_path)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    for row in ['a.ts\t3\t18\t16.666667%', 'b.sql\t3\t11\t27.272727%',
+                'c.py\t2\t5\t40.000000%', 'types.d.ts\t6\t27\t22.222222%']:
+        assert row in result.stdout
+    assert 'untracked.' not in result.stdout
+
+
+@pytest.mark.parametrize('suffix', ['ts', 'tsx', 'mts', 'cts', 'sql'])
+def test_typescript_sql_invalid_utf8_names_file(suffix, tmp_path):
+    name = f'bad.{suffix}'
+    (tmp_path / name).write_bytes(b'// \xff\n')
+    with pytest.raises(counter.MeasurementError, match=name):
+        counter.measure_files(tmp_path, {name: counter.language_for(tmp_path / name)})

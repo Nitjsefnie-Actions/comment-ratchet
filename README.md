@@ -87,6 +87,8 @@ delimiters count as comment bytes. An empty file has share zero.
 | --- | --- | --- |
 | Python | `.py` | `COMMENT` tokens and string tokens in bare string expressions, including docstrings, prefixes and quotes. Assigned strings, bytes literals and f-strings remain code. |
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | Espree comment ranges, including hashbangs. String/template/regex contents and JSX text remain code. JSX parsing is enabled for `.jsx`. |
+| TypeScript | `.ts`, `.tsx`, `.mts`, `.cts` (including `.d.ts`) | TypeScript compiler comment trivia, including hashbangs and comments in JSX expressions. String/template/regex contents and JSX text remain code. JSX parsing is enabled only for `.tsx`; any compiler parse diagnostic fails measurement. |
+| SQL | `.sql` | PostgreSQL lexical comments: `--` lines and nested `/* */` blocks. Single-quoted strings (backslashes escape only in `E'…'`), double-quoted identifiers and case-sensitive dollar-quoted bodies remain code; unfinished quotes or block comments fail measurement. Uses `standard_conforming_strings` on. |
 | YAML | `.yaml`, `.yml` | Lexical YAML comments and block-scalar header comments. Block scalar values of lexically resolved `run` keys are also measured as shell, including workflow `run: |` and `run: >` bodies. Other scalar contents remain data. |
 | Shell | `.sh`, or extensionless files with a recognized shell shebang | Lexical shell comments outside quotes, parameter text and heredoc bodies; command substitutions have their own scopes. |
 
@@ -101,9 +103,9 @@ parentheses, and unresolved aliased/property-prefixed YAML block keys.
 Malformed source, invalid UTF-8, unreadable files and unfinished scopes fail the
 run with the filename. Fix or rewrite that source before retrying the gate.
 
-The action parses source as data. Python imports, JavaScript helpers,
+The action parses source as data. Python imports, JavaScript/TypeScript helpers,
 requirements and the npm lockfile all come from the action's own directory;
-consumer modules and package install scripts are not executed. Espree installs
+consumer modules and package install scripts are not executed. Espree and TypeScript install
 with `npm ci` against committed integrity hashes; PyYAML installs from exact
 version and SHA-256 wheel pins with `pip install --require-hashes` in an
 isolated venv. Consumer `PYTHONPATH` is excluded.
