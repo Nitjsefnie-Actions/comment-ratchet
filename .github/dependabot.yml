@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: weekly
       day: wednesday
-      time: "04:23"
+      time: "04:30"
       timezone: Etc/UTC
     # Dependabot writes its own commit messages, so the convention in
     # CONTRIBUTING.md only holds for them if it is configured here. `include:
@@ -33,7 +33,7 @@ updates:
     schedule:
       interval: weekly
       day: wednesday
-      time: "04:37"
+      time: "04:30"
       timezone: Etc/UTC
     commit-message:
       prefix: ci
@@ -43,7 +43,7 @@ updates:
     schedule:
       interval: weekly
       day: wednesday
-      time: "04:43"
+      time: "04:30"
       timezone: Etc/UTC
     commit-message:
       prefix: ci
@@ -53,7 +53,7 @@ updates:
     schedule:
       interval: weekly
       day: wednesday
-      time: "04:49"
+      time: "04:30"
       timezone: Etc/UTC
     commit-message:
       prefix: ci
