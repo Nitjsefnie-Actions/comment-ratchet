@@ -1,0 +1,46 @@
+# Security
+
+Report vulnerabilities privately through a
+[security advisory on this repository](https://github.com/Nitjsefnie-Actions/comment-ratchet/security/advisories/new),
+not the public issue tracker. Include the action commit SHA, calling workflow,
+inputs, source fixture, records file and observed behavior needed to reproduce.
+
+In scope are the action, its parsing of consumer-controlled source and inputs,
+its dependency installs, ratchet enforcement and the repository's workflows.
+Inputs must remain environment data; consumer code must never execute while
+being measured. High-value reports demonstrate code execution from a source
+fixture or a check that accepts a forbidden rise. Reproduce only in a
+repository you control.
+
+## What happens after you report
+
+A report is acknowledged within three working days. That acknowledgement is a
+person confirming they have read it, not a verdict — the assessment follows.
+
+You will get an assessment within ten working days: whether it reproduces, what
+it affects, and if it is accepted, a rough idea of when a fix will land. If it
+takes longer than that, you will be told why rather than left waiting.
+
+Those two clocks are one person's working days. The project has one
+maintainer, as [CONTRIBUTING.md](CONTRIBUTING.md) explains, so the promises
+above are conditional on that person being available to work on a report. A
+promise kept is kept as written, and a slow answer can reflect that person's availability rather than anything about the
+report. That availability is also what carries the explanation: when it runs
+out the reason runs out with it, so a report can pass ten working days with
+neither an assessment nor the account of why there is none, and nobody else
+will answer — this file refuses the public tracker, and there is no second
+maintainer to ask.
+
+Disclosure is coordinated with you. A fix is released before any public
+description, and the advisory credits you unless you ask otherwise. Ninety days
+after the report is the point at which disclosure happens regardless, so a
+report cannot be buried by being left unanswered. That disclosure is carried by
+the same one person the clocks above are. Ninety days remains the target, and
+if that person is unavailable when the ninety days fall due, the advisory
+publishes when they return — the commitment is scoped to the same availability,
+not withdrawn. What a reporter can rely on if the day falls due with the
+person still away is that this file never asks a report to be held past ninety
+days: the choice to disclose is the reporter's own at that point.
+
+If a report is declined, you will be told the reason. Disagreeing with that is
+reasonable, and saying so is welcome.
