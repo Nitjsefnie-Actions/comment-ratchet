@@ -49,3 +49,6 @@ tests/*
 !.github/workflows/scorecard.yml
 !.github/workflows/requirements.txt
 !.github/workflows/requirements-pip-audit.txt
+!.coveragerc
+!.github/workflows/ratchet-push.yml
+!.github/workflows/coverage-comment.yml
