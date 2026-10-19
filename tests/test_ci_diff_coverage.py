@@ -1,4 +1,4 @@
-"""Run the patch reporter against committed inputs and hand-checked bodies."""
+"""Check committed patch-report fixtures."""
 from __future__ import annotations
 
 import os
@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-# macOS and local interpreters need not measure coverage. Ubuntu installs the
-# pinned tool before pytest, so it always runs these subprocess controls.
+# Ubuntu installs coverage; other interpreters may lack it.
 pytest.importorskip('coverage', reason='diff-coverage controls require coverage')
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +16,7 @@ FIXTURES = ROOT / 'tests/diffcoverage'
 
 
 def report(tmp_path, xml, diff):
-    # analysis2 reads both .coveragerc and the real source in the checkout.
+    # Analyze the checkout source with its real config.
     return subprocess.run(
         [sys.executable, str(ROOT / '.github/scripts/diff_coverage.py'),
          '--coverage', str(FIXTURES / xml), '--diff', str(FIXTURES / diff)],
@@ -41,8 +40,7 @@ def refuses(result, prefix):
 
 
 def test_hunk_walk_missed_ranges(tmp_path):
-    # A removed `-- ` line resembles a file header; losing the path there
-    # drops the second hunk and its adjacent and disjoint missed ranges.
+    # A removed -- line must not hide the second hunk.
     renders(report(tmp_path, 'table.xml', 'table.diff'), """### Coverage of this change
 
 **40.0%** of added lines covered (2/5).
@@ -74,8 +72,7 @@ def test_quoted_path_invalid_utf8(tmp_path):
 
 
 def test_whole_diff_unreadable_bytes(tmp_path):
-    # Git --text can emit any tracked bytes; unrelated content must not
-    # change the measured row or refuse the otherwise usable diff.
+    # Unreadable unrelated bytes must not change the measured row.
     renders(report(tmp_path, 'quoted.xml', 'wholediff-utf8.diff'), """### Coverage of this change
 
 **100.0%** of added lines covered (1/1).

@@ -82,10 +82,7 @@ jobs:
         run: |
           python3 -m coverage combine --rcfile=.coveragerc
           python3 -m coverage report --rcfile=.coveragerc --format=markdown --precision=1 >> "$GITHUB_STEP_SUMMARY"
-      # Ship the same measurement as the summary: the PR-only diff-coverage
-      # job reads it without rerunning the suite. Artifact names share one
-      # run-wide namespace, and this matrix has exactly one uploading cell
-      # for coverage-xml, so the name identifies one measurement.
+      # One Ubuntu uploader gives coverage-xml one measurement per run.
       - name: Write the coverage XML
         if: matrix.os == 'ubuntu-latest'
         env:
@@ -101,39 +98,28 @@ jobs:
           path: coverage.xml
           if-no-files-found: error
 
-  # Of the added lines coverage considers executable, how many the suite
-  # reached. Informational: refactors and deletion-only changes need a
-  # reviewer's judgment, so this job stays outside the aggregate gate.
-  # A skipped or failed suite must never be reported as a measurement.
+  # Informational, outside aggregate: refactors need a reviewer's judgment.
+  # Require a measured green PR; skipped suites supply no measurement.
   diff-coverage:
     needs: suites
     if: ${{ !cancelled() && needs.suites.result == 'success' && github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      # The statement analyzer reads the same config as the measured cell.
       COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
 
-    # This job checks out and runs code from the pull request (the script
-    # below is the pull request's own copy), so it must not carry a token
-    # that can write conversation. The trusted coverage-comment workflow
-    # owns that token.
+    # PR code stays read-only; the trusted coverage-comment workflow writes.
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The merge commit the event named -- the exact SHA the suites job
-          # measured -- and not `refs/pull/N/merge` resolved now, which could
-          # hand this job a different tree than the one the report describes
-          # if GitHub recomputed the merge ref between the two jobs. Full
-          # history, because the diff below needs HEAD^1, the base tip that
-          # was merged into it.
+          # Pin the measured merge tree; a later merge ref could differ.
+          # Full history supplies HEAD^1, the base tip merged into that tree.
           ref: ${{ github.sha }}
           fetch-depth: 0
-          # Nothing in this job pushes; later steps must not inherit a stored
-          # token.
+          # Keep credentials out of later PR subprocesses.
           persist-credentials: false
 
       - name: Download the coverage XML
@@ -141,11 +127,8 @@ jobs:
         with:
           name: coverage-xml
 
-      # Lift only coverage's block from the hash-pinned test manifest: this
-      # job needs its statement analyzer, not the rest of the suite tooling.
-      # A venv also works on PEP 668 images whose system Python refuses pip
-      # installs. No startup hook or COVERAGE_PROCESS_START: no suite runs
-      # here, so there is nothing to measure, only a report to read.
+      # Hash-pinned coverage alone supplies the analyzer; a venv permits
+      # PEP 668 installs. No startup hook: this job only reads measurements.
       - name: Install coverage tooling
         run: |
           python3 -m venv "$RUNNER_TEMP/coverage-venv"
@@ -154,11 +137,8 @@ jobs:
           echo "PATH=$RUNNER_TEMP/coverage-venv/bin:$PATH" >> "$GITHUB_ENV"
 
       - name: Measure the coverage of this change
-        # HEAD is the merge tree checked out above and HEAD^1 is, by
-        # construction, the base tip that was merged into it. The event
-        # payload's `base.sha` is NOT that: the base branch can advance
-        # between the event and the checkout, and every base commit merged in
-        # since would then be reported as a line this pull request added.
+        # HEAD^1 is the measured merge's base; event base.sha can lag and
+        # misattribute later base commits to this PR.
         run: |
           git diff --text --no-ext-diff --no-textconv --unified=0 HEAD^1 HEAD > patch.diff
           python3 .github/scripts/diff_coverage.py \
@@ -167,8 +147,7 @@ jobs:
           cat body.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Package the comment for the trusted commenter
-        # Through env, never interpolation: the number is event data, and a
-        # run: block that inlined it would be program text built from input.
+        # Event data stays in env, outside shell program text.
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
