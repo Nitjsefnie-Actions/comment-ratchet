@@ -11,8 +11,8 @@ and `comment_baseline.py`.
 ## Install
 
 Save this workflow as `.github/workflows/comment-share.yml`. Change `main` to
-your default branch. Pin the action to an implementation commit; update that
-SHA deliberately when upgrading.
+your default branch. The initial reference uses main; the first release tag
+supersedes it.
 
 ```yaml
 name: comment share
@@ -35,7 +35,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: Nitjsefnie-Actions/comment-ratchet@7ebcc2cb0eaa18f4d239d6bd13c9e891d8e11bf9
+      - uses: Nitjsefnie-Actions/comment-ratchet@main # The first release tag supersedes main.
         with:
           target: '15'
           records: '.github/comment-share.json'
@@ -59,8 +59,9 @@ PR base SHA.
 Tighten writes the records file into the checkout; it does not commit or push
 it. A consumer's existing ratchet job can commit that result. For initial
 adoption, run tighten on the proposed head and commit the seed in the adoption
-PR. This repository updates its own records through ordinary PRs, as described
-in [CONTRIBUTING.md](CONTRIBUTING.md#tighten-this-repositorys-records).
+PR. This repository tightens its records on every default-branch push; a
+separate ratchet-push workflow lands the result, as described in
+[CONTRIBUTING.md](CONTRIBUTING.md#tighten-this-repositorys-records).
 
 ## Inputs
 
