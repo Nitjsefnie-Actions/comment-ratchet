@@ -480,7 +480,17 @@ def sql_quote_end(text: str, start: int, escape: bool = False) -> int:
 
 def sql_comments(text: str) -> int:
     index = count = 0
+    escape_string = saw_newline = False
     while index < len(text):
+        if text[index] in ' \t\n\r\f\v':
+            saw_newline |= text[index] in '\r\n'
+            index += 1
+            continue
+        if not text.startswith('--', index):
+            # PostgreSQL continues strings across newlines and line comments;
+            # other tokens, including block comments, end the originating mode.
+            escape_string = escape_string and saw_newline and text[index] == "'"
+            saw_newline = False
         start = index
         if text.startswith('--', index):
             match = re.match(r'[^\r\n]*', text[index:])
@@ -503,9 +513,10 @@ def sql_comments(text: str) -> int:
                 raise MeasurementError('unterminated SQL block comment')
             count += non_whitespace_bytes(text[start:index])
         elif text[index:index + 2] in ("E'", "e'"):
+            escape_string = True
             index = sql_quote_end(text, index + 1, escape=True)
         elif text[index] in "'\"":
-            index = sql_quote_end(text, index)
+            index = sql_quote_end(text, index, escape=escape_string)
         elif text[index] == '$' and (match := SQL_DOLLAR_QUOTE.match(text, index)):
             end = text.find(match[0], match.end())
             if end == -1:

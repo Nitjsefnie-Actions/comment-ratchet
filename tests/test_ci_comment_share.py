@@ -402,6 +402,53 @@ def test_sql_counts(case, source, want, tmp_path):
         assert counter.share(measured[path.name]) == 0
 
 
+SQL_CONTINUATION_CASES = [
+    ('line_text', "SELECT E'a'\n'\\'--inside' AS x; --real\n", (6, 32)),
+    ('block_text', "SELECT E'a'\n'\\'/*inside*/' AS x; --real\n", (6, 34)),
+    ('line_gap', "SELECT E'a' --gap\n'\\'--inside' AS x; --real\n", (11, 37)),
+    ('line_gap_cr', "SELECT E'a' --gap\r'\\'--inside' AS x; --real\r", (11, 37)),
+    ('line_gaps', "SELECT E'a'\n--one\n--two\n'\\'--inside' AS x; --real\n", (16, 42)),
+    ('block_gap', "SELECT E'a' /*gap*/\n'\\'; --real\n", (13, 27)),
+    ('block_gap_newline', "SELECT E'a'\n/*gap*/'\\'; --real\n", (13, 27)),
+    ('cr', "SELECT E'a'\r'\\'--inside' AS x; --real\r", (6, 32)),
+    ('crlf', "SELECT E'a'\r\n'\\'--inside' AS x; --real\r\n", (6, 32)),
+    ('mixed_space', "SELECT E'a' \t\f\v\n \t\f\v'\\'--inside' AS x; --real\n", (6, 32)),
+    ('doubled', "SELECT E'a'\n'b''\\'--inside' AS x; --real\n", (6, 35)),
+    ('escape_then_doubled', "SELECT E'a'\n'\\'''--inside' AS x; --real\n", (6, 34)),
+    ('chain', "SELECT E'a'\n'b'\n'\\'--inside' AS x; --real\n", (6, 35)),
+    ('same_line_after_continuation', "SELECT E'a'\n'b' '\\'; --real\n", (6, 23)),
+    ('no_newline', "SELECT E'a' '\\'; --real\n", (6, 20)),
+    ('tab_only', "SELECT E'a'\t'\\'; --real\n", (6, 20)),
+    ('formfeed_only', "SELECT E'a'\f'\\'; --real\n", (6, 20)),
+    ('vertical_tab_only', "SELECT E'a'\v'\\'; --real\n", (6, 20)),
+    ('operator', "SELECT E'a'\n||'\\'; --real\n", (6, 22)),
+    ('unicode_gap', "SELECT E'a'\u0085\n'\\'; --real\n", (6, 20)),
+    ('identifier_quote', 'SELECT E\'a\'\n"x\\"; --real\n', (6, 21)),
+    ('reset_after_string', "SELECT E'a'\n'b'; SELECT '\\'; --real\n", (6, 30)),
+    ('eof_after_gap', "SELECT E'a'\n \t", (0, 10)),
+]
+
+
+@pytest.mark.parametrize('prefix', ['E', 'e'])
+@pytest.mark.parametrize('case,source,want', SQL_CONTINUATION_CASES,
+                         ids=[c[0] for c in SQL_CONTINUATION_CASES])
+def test_sql_escape_continuation_counts(prefix, case, source, want, tmp_path):
+    source = source.replace("E'", prefix + "'", 1)
+    path = tmp_path / 'sample.sql'
+    path.write_text(source, encoding='utf-8')
+    assert counter.measure_files(tmp_path, {path.name: 'sql'}) == {path.name: want}
+
+
+@pytest.mark.parametrize('source,want', [
+    ("SELECT 'a'\n'\\'; --real\n", (6, 19)),
+    ("SELECT 'a'\n'b''\\'; --real\n", (6, 22)),
+])
+def test_sql_plain_continuation_keeps_backslash_literal(source, want, tmp_path):
+    path = tmp_path / 'plain.sql'
+    path.write_text(source, encoding='utf-8')
+    assert counter.measure_files(tmp_path, {path.name: 'sql'}) == {path.name: want}
+
+
 BAD_TS = [
     'const = 1;', 'let x="open', '/* open', 'let x=`open',
     'let x=/[/', 'function f( {',
@@ -411,6 +458,9 @@ BAD_SQL = [
     'select $tag$open$TAG$', '/* open', '/* outer /* inner */', '/* outer /* inner',
     "select 'a\\'-- c\n'",
     "select E'a\\'", "select e'a\\'",
+    "SELECT E'a'\n'\\'", "SELECT e'a'\n'\\'",
+    "SELECT E'a'\n'\\'; --real\n", "SELECT e'a'\n'\\'; --real\n",
+    "SELECT E'a' --gap\n'\\'", "SELECT e'a' --gap\n'\\'",
 ]
 
 
