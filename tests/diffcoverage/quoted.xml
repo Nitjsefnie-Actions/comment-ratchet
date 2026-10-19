@@ -1,0 +1,17 @@
+<?xml version="1.0" ?>
+<coverage line-rate="1" version="7.16.2">
+  <sources/>
+  <packages>
+    <package>
+      <classes>
+        <class filename="run.py" name="run">
+          <methods/>
+          <lines>
+            <line number="11" hits="1"/>
+            <line number="12" hits="1"/>
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>

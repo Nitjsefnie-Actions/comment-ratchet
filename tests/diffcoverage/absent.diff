@@ -1,0 +1,16 @@
+diff --git a/run.py b/run.py
+index 0000000..1111111 100644
+--- a/run.py
++++ b/run.py
+@@ -29,0 +30,11 @@
++                mode = 'tighten'
++            else:
++                raise ValueError(f'input mode=auto cannot handle event {event!r} '
++                                 f'on ref {os.environ.get("GITHUB_REF", "")!r}')
++        base = policy.base_input(os.environ.get('BASE_REF', '')) if mode == 'check' else ''
++        if sys.argv[1:] == ['--validate-only']:
++            return 0
++        os.environ['COMMENT_RATCHET_ESPREE_DIR'] = str(ACTION_ROOT / 'node_modules')
++        return policy.run(root, records, mode, target, base)
++    except (OSError, ValueError, subprocess.SubprocessError) as error:
++        print(f'comment-ratchet failed: {error}', file=sys.stderr)

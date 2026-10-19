@@ -49,7 +49,7 @@ def workflow(name):
     return yaml.load((ROOT / '.github/workflows' / name).read_text(), Loader=yaml.BaseLoader)
 
 
-def condition(expression, *, successful=True, **contexts):
+def condition(expression, *, successful=True, cancelled=False, **contexts):
     import re
     from types import SimpleNamespace
     def namespace(value):
@@ -58,6 +58,7 @@ def condition(expression, *, successful=True, **contexts):
     source = source.replace('&&', ' and ').replace('||', ' or ')
     source = re.sub(r'!(?!=)', ' not ', source)
     return bool(eval(source, {'__builtins__': {}, 'success': lambda: successful,
+                             'cancelled': lambda: cancelled,
                              'always': lambda: True},
                      {key: namespace(value) for key, value in contexts.items()}))
 
@@ -230,22 +231,53 @@ exec "{real_git}" "$@"
         assert 'Dropped' in (runtime / 'summary').read_text()
 
 
-@pytest.mark.parametrize('os_name,event,successful,want', [
-    ('ubuntu-latest', 'pull_request', True, True),
-    ('macos-latest', 'pull_request', True, False),
-    ('ubuntu-latest', 'push', True, False),
-    ('ubuntu-latest', 'pull_request', False, False),
+@pytest.mark.parametrize('event,result,cancelled,want', [
+    ('pull_request', 'success', False, True),
+    ('push', 'success', False, False),
+    ('workflow_dispatch', 'success', False, False),
+    ('pull_request', 'failure', False, False),
+    ('pull_request', 'cancelled', False, False),
+    ('pull_request', 'skipped', False, False),
+    ('pull_request', 'success', True, False),
 ])
-def test_coverage_artifact_only_from_measured_green_pr(os_name, event, successful, want):
-    suites = workflow('tests.yml')['jobs']['suites']
-    upload = next(step for step in suites['steps']
-                  if step.get('with', {}).get('name') == 'python-coverage-comment')
-    assert condition(upload['if'], successful=successful, matrix={'os': os_name},
+def test_coverage_artifact_only_from_measured_green_pr(event, result, cancelled, want):
+    config = workflow('tests.yml')
+    job = config['jobs']['diff-coverage']
+    assert job['needs'] == 'suites'
+    assert condition(job['if'], cancelled=cancelled,
+                     needs={'suites': {'result': result}},
                      github={'event_name': event}) is want
+    assert job['permissions'] == {'contents': 'read'}
+    upload = next(step for step in job['steps']
+                  if step.get('with', {}).get('name') == 'python-coverage-comment')
+    # No step-level bypass can turn a failed report into a posted number.
+    assert all('if' not in step for step in job['steps'])
+    assert upload['with']['path'].splitlines() == ['body.md', 'pr-number.txt']
     consumer = workflow('coverage-comment.yml')
-    assert consumer['on']['workflow_run']['workflows'] == [workflow('tests.yml')['name']]
+    assert consumer['on']['workflow_run']['workflows'] == [config['name']]
     download = next(step for step in consumer['jobs']['comment']['steps'] if 'uses' in step)
     assert download['with']['name'] == upload['with']['name']
+
+
+@pytest.mark.parametrize('os_name,want', [('ubuntu-latest', True), ('macos-latest', False)])
+def test_coverage_xml_has_one_uploading_cell(os_name, want):
+    jobs = workflow('tests.yml')['jobs']
+    # Artifact names share one run-wide namespace; exactly one matrix cell
+    # supplies XML and exactly one job supplies the rendered comment.
+    uploads = [(name, step) for name, job in jobs.items() for step in job.get('steps', [])
+               if step.get('uses', '').startswith('actions/upload-artifact@')
+               and step['with']['name'] in ('coverage-xml', 'python-coverage-comment')]
+    assert [(name, step['with']['name']) for name, step in uploads] == [
+        ('suites', 'coverage-xml'), ('diff-coverage', 'python-coverage-comment')]
+    xml = uploads[0][1]
+    assert condition(xml['if'], matrix={'os': os_name}) is want
+    writer = next(step for step in jobs['suites']['steps']
+                  if step.get('name') == 'Write the coverage XML')
+    assert condition(writer['if'], matrix={'os': os_name}) is want
+    assert xml['with']['path'] == 'coverage.xml'
+    download = next(step for step in jobs['diff-coverage']['steps']
+                    if step.get('uses', '').startswith('actions/download-artifact@'))
+    assert download['with']['name'] == xml['with']['name']
 
 
 def test_coverage_measures_isolated_action_subprocess(tmp_path):

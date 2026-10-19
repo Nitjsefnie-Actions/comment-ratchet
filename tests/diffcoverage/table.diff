@@ -1,0 +1,13 @@
+diff --git a/run.py b/run.py
+index 0000000..1111111 100644
+--- a/run.py
++++ b/run.py
+@@ -10,2 +10,1 @@
+--- a removed line whose content begins with dashes
+-    gone = 1
++ACTION_ROOT = Path(__file__).resolve().parent
+@@ -20,0 +21,4 @@
++        if mode not in ('auto', 'check', 'tighten'):
++            raise ValueError(f'input mode must be auto, check or tighten, got {mode!r}')
++        if mode == 'auto':
++            event = os.environ.get('GITHUB_EVENT_NAME', '')

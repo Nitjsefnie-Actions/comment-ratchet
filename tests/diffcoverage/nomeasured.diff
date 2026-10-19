@@ -1,0 +1,6 @@
+diff --git a/tests/run.sh b/tests/run.sh
+index 0000000..1111111 100644
+--- a/tests/run.sh
++++ b/tests/run.sh
+@@ -1,0 +2 @@
++# a change confined to the suite

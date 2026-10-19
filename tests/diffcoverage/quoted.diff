@@ -1,0 +1,7 @@
+diff --git "a/r\165n.py" "b/r\165n.py"
+index 0000000..1111111 100644
+--- "a/r\165n.py"
++++ "b/r\165n.py"
+@@ -10,0 +11,2 @@
++sys.path.insert(0, str(ACTION_ROOT / 'scripts' / 'ci'))
++import comment_baseline as policy
