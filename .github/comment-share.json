@@ -1,0 +1,38 @@
+{
+  ".github/dependabot.yml": [
+    528,
+    1212
+  ],
+  ".github/workflows/actionlint.yml": [
+    2713,
+    4531
+  ],
+  ".github/workflows/audit.yml": [
+    3479,
+    5333
+  ],
+  ".github/workflows/codeql.yml": [
+    1578,
+    2493
+  ],
+  ".github/workflows/pr-gate.yml": [
+    403,
+    1059
+  ],
+  ".github/workflows/scorecard.yml": [
+    593,
+    1587
+  ],
+  ".github/workflows/secrets.yml": [
+    1828,
+    2543
+  ],
+  ".github/workflows/tests.yml": [
+    1797,
+    4007
+  ],
+  "tests/run.sh": [
+    18,
+    79
+  ]
+}

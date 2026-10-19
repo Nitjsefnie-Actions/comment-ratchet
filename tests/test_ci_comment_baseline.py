@@ -65,6 +65,12 @@ def git(root, *args):
                           text=True, check=True).stdout.strip()
 
 
+def init_repo(root):
+    git(root, 'init', '-q')
+    git(root, 'config', 'user.name', 'Comment ratchet tests')
+    git(root, 'config', 'user.email', 'tests@example.com')
+
+
 def commit(root, subject):
     git(root, 'add', '.')
     git(root, 'commit', '-qm', subject)
@@ -73,7 +79,7 @@ def commit(root, subject):
 
 @pytest.fixture
 def repo(tmp_path):
-    git(tmp_path, 'init', '-q')
+    init_repo(tmp_path)
     (tmp_path / 'x.py').write_text('# hi\nx = 1\n')
     # Literal fixture: #hi is 3 bytes, x=1 is 3, so x.py is [3, 6].
     commit(tmp_path, 'base without records')
@@ -192,7 +198,7 @@ def test_invalid_base_does_not_fall_back(repo):
 def test_missing_base_object_is_fetched_in_consumer_checkout(tmp_path):
     origin = tmp_path / 'origin'
     origin.mkdir()
-    git(origin, 'init', '-q')
+    init_repo(origin)
     (origin / 'x.py').write_text('# hi\nx=1\n')
     write_records(origin, {'x.py': [3, 6]})
     base = commit(origin, 'base')
@@ -215,3 +221,14 @@ def test_malformed_base_records_cannot_use_head_fallback(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert 'records' in result.stderr
+
+
+def test_tighten_adds_new_records_without_raising_existing(repo):
+    write_records(repo, {'x.py': [2, 6], 'gone.py': [2, 3], 'graduated.py': [2, 3]})
+    (repo / 'new.sh').write_text('# yes\n')
+    (repo / 'graduated.py').write_text('x=1\n')
+    git(repo, 'add', '.')
+    result = cli(repo, '--mode', 'tighten')
+    assert result.returncode == 0, result.stderr
+    assert json.loads((repo / '.github/comment-share.json').read_bytes()) == {
+        'x.py': [2, 6], 'new.sh': [4, 4]}
