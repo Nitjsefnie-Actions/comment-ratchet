@@ -30,6 +30,7 @@ scripts/ci/*
 !scripts/ci/comment_share.py
 !scripts/ci/comment_baseline.py
 !scripts/ci/js_comment_ranges.mjs
+!scripts/ci/ts_comment_ranges.mjs
 !scripts/ci/js_comment_tokens.mjs
 !scripts/ci/aggregate_gate.py
 !tests/

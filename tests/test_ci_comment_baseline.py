@@ -234,3 +234,36 @@ def test_tighten_adds_new_records_without_raising_existing(repo):
     assert result.returncode == 0, result.stderr
     assert json.loads((repo / '.github/comment-share.json').read_bytes()) == {
         'x.py': [2, 6], 'new.sh': [4, 4]}
+
+
+@pytest.mark.parametrize('suffix,source,want', [
+    ('ts', '// c\nexport const x = 1;\n', [3, 18]),
+    ('tsx', '// c\nexport const x = 1;\n', [3, 18]),
+    ('mts', '// c\nexport const x = 1;\n', [3, 18]),
+    ('cts', '// c\nexport const x = 1;\n', [3, 18]),
+    ('d.ts', '/** c */declare const x: number;\n', [6, 27]),
+    ('sql', '-- c\nselect 1;\n', [3, 11]),
+])
+def test_typescript_sql_records_check_and_tighten(repo, suffix, source, want):
+    name = f'new.{suffix}'
+    (repo / name).write_text(source)
+    write_records(repo, {'x.py': [3, 6]})
+    base = commit(repo, 'add source with no record')
+    failed = cli(repo, '--base-ref', base)
+    assert failed.returncode == 1
+    assert name in failed.stderr
+    assert cli(repo, '--mode', 'tighten').returncode == 0
+    records = json.loads((repo / '.github/comment-share.json').read_text())
+    assert records[name] == want
+    base = commit(repo, 'seed new language')
+    assert cli(repo, '--base-ref', base).returncode == 0
+    (repo / name).write_text(source + ('-- more\n' if suffix == 'sql' else '// more\n'))
+    raised = cli(repo, '--base-ref', base)
+    assert raised.returncode == 1
+    assert name in raised.stderr
+    assert cli(repo, '--mode', 'tighten').returncode == 0
+    assert json.loads((repo / '.github/comment-share.json').read_text())[name] == want
+    (repo / name).write_text('select 1;\n' if suffix == 'sql' else 'export const x=1;\n')
+    assert cli(repo, '--base-ref', base).returncode == 0
+    assert cli(repo, '--mode', 'tighten').returncode == 0
+    assert name not in json.loads((repo / '.github/comment-share.json').read_text())
