@@ -69,35 +69,50 @@ run its PR workflow. Local subprocess tests do not replace a hosted run.
 
 ## Tighten this repository's records
 
-Records changes go through an **ordinary pull request**. There is no deploy
-key and no tighten-and-push workflow job.
+Records tighten on every default-branch push. After the entire tests gate is
+green on main, its keyless ratchet job runs the local action in tighten mode.
+Only a changed records file stages a ratchet-push artifact, together with the
+measured run's head SHA in base.txt.
 
-1. Start an ordinary PR branch from current `main`, install the toolchain
-   above, and stage any new source files so Git tracks them.
-2. Run tighten against the proposed head tree:
+The separate top-level [ratchet-push workflow](.github/workflows/ratchet-push.yml)
+lands the result. It admits only successful main push runs, downloads that
+run's data, and creates a records-only commit with the environment deploy key.
+It checks out no code, installs nothing, and runs no fetched helpers. Configure
+MASTER_PUSH_DEPLOY_KEY in the main-push environment; a missing key fails loudly.
+The bot commit reruns the gate once, and unchanged records stage no artifact,
+so the chain stops there.
 
-   ```bash
-   MODE=tighten GITHUB_WORKSPACE="$PWD" python3 -I run.py
-   ```
+When main has moved, the push job merges the single records file three ways.
+Conflicts drop that run with a summary; a push rejected while main stood still
+is an error. A rejection after main moved drops the stale run so the next gate
+can measure again.
 
-   This invokes the same dispatcher as `with: {mode: tighten}` in the action.
-3. Review `.github/comment-share.json`. It may lower records, record new
-   above-target files, and drop deleted or graduated files. It preserves a
-   stricter existing pair when a share rose; it cannot cure a regression by
-   raising that record.
-4. Run `tests/run.sh`, then commit the records file with the change:
+For initial adoption, generate the exact seed for the proposed head and commit
+it with the PR, because a seedless base uses the head seed under the strict
+fallback rule:
 
-   ```bash
-   git add .github/comment-share.json
-   git commit
-   ```
+```bash
+MODE=tighten GITHUB_WORKSPACE="$PWD" python3 -I run.py
+git add .github/comment-share.json
+```
 
-5. Push the PR branch and let the normal PR checks run the local action in
-   check mode against the base SHA. Merge through the ordinary review process.
+After adoption, head edits never replace the base policy for a check. The
+push workflow lowers existing records and cannot cure a regression by raising
+them.
 
-For first adoption, the base has no records file, so the head seed must match
-fresh tighten output exactly. Commit that seed together with the adoption.
-After adoption, head edits never replace the base policy for a check.
+## Python coverage comments
+
+The Ubuntu suites cell measures run.py and scripts/ci/*.py, including isolated
+Python subprocesses, using the hash-pinned coverage toolchain. macOS runs the
+same regression suite without measurement. Coverage is informational: there
+is no new coverage floor or required-checks file.
+
+For a green Ubuntu PR suite, the rendered whole-run Python coverage table and
+PR number are uploaded as data. The separate coverage-comment workflow holds
+the conversation write token, resolves the destination from the triggering
+event, validates the artifact's PR number, and posts or updates one comment.
+It checks out no PR code and executes nothing from the artifact. Missing
+measurement replaces an existing stale percentage with a not-measured marker.
 
 ## House style
 
