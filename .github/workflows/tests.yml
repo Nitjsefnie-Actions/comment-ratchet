@@ -81,7 +81,7 @@ jobs:
           COVERAGE_FILE: ${{ runner.temp }}/comment-ratchet-coverage/.coverage
         run: |
           python3 -m coverage combine --rcfile=.coveragerc
-          python3 -m coverage report --rcfile=.coveragerc --format=markdown --precision=1 > body.md
+          python3 -m coverage report --rcfile=.coveragerc --format=markdown --precision=1 --show-missing > body.md
           cat body.md >> "$GITHUB_STEP_SUMMARY"
       - name: Package the coverage comment
         if: success() && matrix.os == 'ubuntu-latest' && github.event_name == 'pull_request'
