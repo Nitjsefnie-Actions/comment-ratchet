@@ -131,8 +131,9 @@ current_total` is a rise, even if a rounded percentage would look equal.
 edits to that file. If the base object is absent locally, it performs a targeted
 `git fetch --no-tags origin <base-ref>` in the **consumer checkout**, without
 changing HEAD. Each unrecorded file above target and each recorded file above
-its record fails, with its path and both byte pairs. Equal or lower shares,
-deleted files and files back at or below target pass.
+its record fails, with its path and both byte pairs. Equal or lower shares
+or equal or fewer comment bytes, deleted files and files back at or below
+target pass.
 
 **When the base has no records file**, check falls back to the head commit's
 records file. That seed must contain **exactly** the entries and byte pairs

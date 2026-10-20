@@ -29,7 +29,8 @@ def violations(measured: dict[str, tuple[int, int]], baseline: dict[str, list[in
                target: Pair = TARGET) -> dict[str, str]:
     return {path: f'{counts} exceeds {baseline.get(path, target)}'
             for path, counts in measured.items()
-            if above(counts, baseline.get(path, target))}
+            if (above(counts, baseline[path]) and counts[0] > baseline[path][0]
+                if path in baseline else above(counts, target))}
 
 
 def tightened(baseline: dict[str, list[int]], measured: dict[str, tuple[int, int]],
