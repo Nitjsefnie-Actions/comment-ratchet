@@ -21,6 +21,9 @@ def policy():
     ((149999999999999999, 1000000000000000000), {}, False),
     ((150000000000000001, 1000000000000000000), {}, True),
     ((20, 100), {'x.py': [19, 100]}, True),
+    ((20, 80), {'x.py': [20, 100]}, False),
+    ((19, 20), {'x.py': [20, 100]}, False),
+    ((21, 100), {'x.py': [20, 100]}, True),
     ((25, 100), {'x.py': [30, 100]}, False),
     ((35, 200), {'x.py': [20, 100]}, False),
     ((15, 100), {'x.py': [20, 100]}, False),
@@ -180,6 +183,31 @@ def test_lower_equal_deleted_and_graduated_pass_then_tighten(repo):
     assert cli(repo, '--base-ref', base).returncode == 0
     assert cli(repo, '--mode', 'tighten').returncode == 0
     assert json.loads((repo / '.github/comment-share.json').read_text()) == {}
+
+
+def test_code_deletion_cannot_loosen_records_across_prs(repo):
+    source = repo / 'x.py'
+    source.write_text('#' + 'c' * 19 + '\n' + 'x' * 80 + '\n')
+    records = write_records(repo, {'x.py': [20, 100]})
+    base = commit(repo, 'base policy')
+    assert policy().comment_share.measure_files(repo) == {'x.py': (20, 100)}
+
+    source.write_text('#' + 'c' * 18 + '\nx\n')
+    commit(repo, 'first pr removes code and one comment byte')
+    assert policy().comment_share.measure_files(repo) == {'x.py': (19, 20)}
+    first = cli(repo, '--base-ref', base)
+    assert first.returncode == 0, first.stderr
+    tightened = cli(repo, '--mode', 'tighten')
+    assert tightened.returncode == 0, tightened.stderr
+    assert json.loads(records.read_text()) == {'x.py': [20, 100]}
+    next_base = git(repo, 'rev-parse', 'HEAD')
+
+    source.write_text('#' + 'c' * 94 + '\nxxxxx\n')
+    commit(repo, 'second pr adds comments')
+    assert policy().comment_share.measure_files(repo) == {'x.py': (95, 100)}
+    second = cli(repo, '--base-ref', next_base)
+    assert second.returncode == 1, second.stdout
+    assert 'x.py: (95, 100) exceeds [20, 100]' in second.stderr
 
 
 def test_custom_target_and_records(repo):
