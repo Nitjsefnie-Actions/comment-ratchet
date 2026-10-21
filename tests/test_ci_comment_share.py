@@ -542,7 +542,10 @@ def test_backslash_named_malformed_source_fails(suffix, tmp_path):
     subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
     name = f'weird\\bad.{suffix}'
     (tmp_path / name).write_text('const x = ;\n')
-    subprocess.run(['git', '-C', str(tmp_path), 'add', name], check=True)
+    sibling = tmp_path / f'weird/bad.{suffix}'
+    sibling.parent.mkdir()
+    sibling.write_text('const ok = 1;\n')
+    subprocess.run(['git', '-C', str(tmp_path), 'add', name, str(sibling)], check=True)
     result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
                              '--report', '--root', str(tmp_path)],
                             capture_output=True, text=True)
