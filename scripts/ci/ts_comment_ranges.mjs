@@ -10,10 +10,25 @@ try {
   // One program over every file keeps the parse-diagnostic gate fail-closed
   // for .d.ts too, which the transpile path cannot carry.
   const program = api.createProgram(files, { noResolve: true, noLib: true });
+  // The program silently drops a file whose name its Go side normalizes away
+  // (a backslash in a POSIX filename, for one), so an empty diagnostic
+  // result alone proves nothing: every file must be in the program to be
+  // syntax-validated at all.
+  for (const file of files) {
+    if (program.getSourceFile(file) == null) {
+      throw new Error(`${file}: the compiler did not parse this file`);
+    }
+  }
   const allDiagnostics = program.getSyntacticDiagnostics();
   const comments = files.map((file) => {
     try {
       const source = readFileSync(file, 'utf8');
+      // 7.1 accepts a shebang after a BOM where 5.9.3 rejected the file;
+      // keep the old refusal.
+      if (source.charCodeAt(0) === 0xfeff && source.charCodeAt(1) === 0x23
+          && source.charCodeAt(2) === 0x21) {
+        throw new Error(`'#!' can only be used at the start of a file.`);
+      }
       const diagnostics = allDiagnostics.filter((d) => d.fileName === file);
       if (diagnostics.length) {
         throw new Error(diagnostics.map((d) => d.text).join('\n'));
