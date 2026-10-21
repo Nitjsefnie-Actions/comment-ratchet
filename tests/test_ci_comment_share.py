@@ -519,11 +519,33 @@ BAD_SQL = [
 ] + [(f'bad.{ext}', 'const x=<div/>;') for ext in ['ts', 'mts', 'cts']]
   + [('bad.tsx', 'const x=<div>')]
   + [('bad.tsx', 'const x=<number>1;')]
+  + [(f'bad.{ext}', '﻿#!/usr/bin/env node\n// c\nlet x=1;\n')
+     for ext in ['ts', 'tsx', 'mts', 'cts']]
   + [('bad.sql', source) for source in BAD_SQL])
 def test_typescript_sql_failure_names_file(name, source, tmp_path):
     subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
     (tmp_path / name).write_text(source)
     subprocess.run(['git', '-C', str(tmp_path), 'add', name], check=True)
+    result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
+                             '--report', '--root', str(tmp_path)],
+                            capture_output=True, text=True)
+    assert result.returncode == 1
+    assert name in result.stderr
+    assert not result.stdout
+
+
+@pytest.mark.parametrize('suffix', ['ts', 'tsx', 'mts', 'cts'])
+def test_backslash_named_malformed_source_fails(suffix, tmp_path):
+    # The compiler normalizes path separators, so a tracked POSIX filename
+    # carrying a backslash would skip the parse-diagnostic gate entirely
+    # unless every file is verified present in the program.
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    name = f'weird\\bad.{suffix}'
+    (tmp_path / name).write_text('const x = ;\n')
+    sibling = tmp_path / f'weird/bad.{suffix}'
+    sibling.parent.mkdir()
+    sibling.write_text('const ok = 1;\n')
+    subprocess.run(['git', '-C', str(tmp_path), 'add', name, str(sibling)], check=True)
     result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
                              '--report', '--root', str(tmp_path)],
                             capture_output=True, text=True)
