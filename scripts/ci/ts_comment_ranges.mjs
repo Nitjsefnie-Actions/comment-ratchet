@@ -9,10 +9,12 @@ try {
   const api = new sync.API();
   // One program gates every parse diagnostic, fail-closed for .d.ts too.
   const program = api.createProgram(files, { noResolve: true, noLib: true });
-  // The program silently drops a file whose name its Go side normalizes
-  // away, so emptiness proves nothing until every file is proven parsed.
+  // A name the Go side normalizes (a backslash in a POSIX filename) still
+  // resolves through getSourceFile, so require each file in the program's
+  // own enumeration: a resolved lookup can be a different file than measured.
+  const programFiles = new Set(program.getSourceFileNames().map(String));
   for (const file of files) {
-    if (program.getSourceFile(file) == null) {
+    if (!programFiles.has(file)) {
       throw new Error(`${file}: the compiler did not parse this file`);
     }
   }
