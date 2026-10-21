@@ -7,13 +7,10 @@ try {
   const sync = require('typescript/sync');
   const files = JSON.parse(readFileSync(0, 'utf8'));
   const api = new sync.API();
-  // One program over every file keeps the parse-diagnostic gate fail-closed
-  // for .d.ts too, which the transpile path cannot carry.
+  // One program gates every parse diagnostic, fail-closed for .d.ts too.
   const program = api.createProgram(files, { noResolve: true, noLib: true });
-  // The program silently drops a file whose name its Go side normalizes away
-  // (a backslash in a POSIX filename, for one), so an empty diagnostic
-  // result alone proves nothing: every file must be in the program to be
-  // syntax-validated at all.
+  // The program silently drops a file whose name its Go side normalizes
+  // away, so emptiness proves nothing until every file is proven parsed.
   for (const file of files) {
     if (program.getSourceFile(file) == null) {
       throw new Error(`${file}: the compiler did not parse this file`);
@@ -23,8 +20,7 @@ try {
   const comments = files.map((file) => {
     try {
       const source = readFileSync(file, 'utf8');
-      // 7.1 accepts a shebang after a BOM where 5.9.3 rejected the file;
-      // keep the old refusal.
+      // 7.1 accepts a BOM-then-shebang where 5.9.3 rejected the file.
       if (source.charCodeAt(0) === 0xfeff && source.charCodeAt(1) === 0x23
           && source.charCodeAt(2) === 0x21) {
         throw new Error(`'#!' can only be used at the start of a file.`);
