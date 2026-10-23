@@ -185,6 +185,7 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
     base_sha = resolve_ref(root, base_ref)
     baseline = records_at(root, base_sha, records)
     measured = comment_share.measure_files(root)
+    checked = measured
     if baseline is None:
         head = records_at(root, 'HEAD', records)
         if head is None:
@@ -200,10 +201,13 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
             return 1
         baseline = head
     else:
+        checked = {path: counts for path, counts in measured.items()
+                   if path not in baseline or not above(baseline[path], limit)
+                   or above(counts, limit)}
         for path, counts in measure_changed_at(root, base_sha, baseline.keys() & measured.keys()).items():
             if not above(counts, baseline[path]):
                 baseline[path] = list(counts)
-    found = violations(measured, baseline, limit)
+    found = violations(checked, baseline, limit)
     for path, detail in sorted(found.items()):
         print(f'{path}: {detail}', file=sys.stderr)
     if found:
