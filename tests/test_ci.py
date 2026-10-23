@@ -14,7 +14,7 @@ LEGS = ('suites', 'shellcheck', 'comment-share', 'codeql', 'secrets', 'audit')
 
 def fold(results):
     return subprocess.run([sys.executable, str(ROOT / 'scripts/ci/aggregate_gate.py')],
-                          env=dict(os.environ, NEEDS_JSON=json.dumps(results)),
+                          env=dict(os.environ, COMMENT_RATCHET_NEEDS_JSON=json.dumps(results)),
                           capture_output=True, text=True, check=False)
 
 
@@ -39,7 +39,7 @@ def test_aggregate_fails_closed(leg, state):
 @pytest.mark.parametrize('payload', ['null', '[]', '{}', 'not json'])
 def test_aggregate_bad_payload_fails(payload):
     result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci/aggregate_gate.py')],
-                            env=dict(os.environ, NEEDS_JSON=payload), capture_output=True,
+                            env=dict(os.environ, COMMENT_RATCHET_NEEDS_JSON=payload), capture_output=True,
                             text=True, check=False)
     assert result.returncode == 1
 
@@ -107,7 +107,7 @@ def test_ratchet_push_trigger_and_secret_boundary(event, branch, result, want):
 
 def push_script():
     return next(step['run'] for step in workflow('ratchet-push.yml')['jobs']['push']['steps']
-                if 'MASTER_PUSH_DEPLOY_KEY' in step.get('env', {}))
+                if 'COMMENT_RATCHET_MASTER_PUSH_DEPLOY_KEY' in step.get('env', {}))
 
 
 def shell(script, directory, **env):
@@ -117,9 +117,10 @@ def shell(script, directory, **env):
 
 
 def test_ratchet_empty_key_refuses_before_any_push(tmp_path):
-    result = shell(push_script(), tmp_path, MASTER_PUSH_DEPLOY_KEY='', RUNNER_TEMP=tmp_path)
+    result = shell(push_script(), tmp_path, COMMENT_RATCHET_MASTER_PUSH_DEPLOY_KEY='',
+                   RUNNER_TEMP=tmp_path)
     assert result.returncode == 1
-    assert 'MASTER_PUSH_DEPLOY_KEY' in result.stderr and 'main-push' in result.stderr
+    assert 'COMMENT_RATCHET_MASTER_PUSH_DEPLOY_KEY' in result.stderr and 'main-push' in result.stderr
     assert not (tmp_path / 'ratchet-repo').exists()
 
 
@@ -141,7 +142,7 @@ def test_tighten_records_commit_stops_the_artifact_loop(tmp_path):
         output = runtime / 'output'
         assert cli(repo, '--mode', 'tighten').returncode == 0
         result = shell(stage['run'], repo, RUNNER_TEMP=runtime, GITHUB_OUTPUT=output,
-                       BASE_SHA=git(repo, 'rev-parse', 'HEAD'))
+                       COMMENT_RATCHET_BASE_SHA=git(repo, 'rev-parse', 'HEAD'))
         assert result.returncode == 0, result.stderr
         changed = dict(line.split('=', 1) for line in output.read_text().splitlines())['changed']
         assert condition(upload['if'], steps={'stage': {'outputs': {'changed': changed}}}) is want
@@ -207,7 +208,7 @@ exec "{real_git}" "$@"
             (wrapper / 'git').chmod(0o755)
         if hook.exists():
             hook.chmod(0o755)
-    env = {'RUNNER_TEMP': runtime, 'PUSH_REMOTE': remote, 'REPO': 'test/repo',
+    env = {'RUNNER_TEMP': runtime, 'PUSH_REMOTE': remote, 'COMMENT_RATCHET_REPO': 'test/repo',
            'GITHUB_STEP_SUMMARY': runtime / 'summary'}
     if movement == 'race':
         env['PATH'] = str(wrapper)+os.pathsep+os.environ['PATH']
@@ -284,10 +285,11 @@ def test_coverage_measures_isolated_action_subprocess(tmp_path):
     commit(repo, 'source')
     driver = tmp_path / 'driver.py'
     driver.write_text('import os, subprocess, sys\n'
-                      f'env=dict(os.environ, GITHUB_WORKSPACE={str(repo)!r}, MODE="tighten")\n'
+                      f'env=dict(os.environ, GITHUB_WORKSPACE={str(repo)!r}, COMMENT_RATCHET_MODE="tighten")\n'
                       f'subprocess.run([sys.executable,"-I",{str(ROOT / "run.py")!r}],env=env,check=True)\n')
     config = ROOT / '.coveragerc'
-    env = dict(os.environ, COVERAGE_SOURCE_ROOT=str(ROOT), COVERAGE_FILE=str(tmp_path / '.coverage'))
+    env = dict(os.environ, COMMENT_RATCHET_COVERAGE_SOURCE_ROOT=str(ROOT),
+               COVERAGE_FILE=str(tmp_path / '.coverage'))
     commands = [
         [sys.executable, '-m', 'coverage', 'run', '--rcfile', str(config), str(driver)],
         [sys.executable, '-m', 'coverage', 'combine', '--rcfile', str(config)],
@@ -332,8 +334,9 @@ else:
 ''')
     stub.chmod(0o755)
     name = 'Mark missing Python coverage' if state == 'missing' else 'Post or update the pull request comment'
-    result = shell(comment_step(name), tmp_path, GH_TOKEN='test-token', REPO='test/repo',
-                   PR_NUMBER='1', HEAD_SHA='current-head', COMMENT_STATE=state,
+    result = shell(comment_step(name), tmp_path, GH_TOKEN='test-token', COMMENT_RATCHET_REPO='test/repo',
+                   COMMENT_RATCHET_PR_NUMBER='1', COMMENT_RATCHET_HEAD_SHA='current-head',
+                   COMMENT_STATE=state,
                    PATH=str(binary)+os.pathsep+os.environ['PATH'])
     assert result.returncode == (1 if state == 'wrong-pr' else 0), result.stderr
     writes = tmp_path / 'writes.jsonl'
@@ -362,7 +365,8 @@ def test_ratchet_artifact_listing_does_not_swallow_api_failure(tmp_path):
     output = tmp_path / 'output'
     result = subprocess.run(['bash', '-e', '-c', step['run']], cwd=tmp_path,
                             env=dict(os.environ, PATH=str(binary)+os.pathsep+os.environ['PATH'],
-                                     GH_TOKEN='test', REPO='test/repo', RUN_ID='1', GITHUB_OUTPUT=str(output)),
+                                     GH_TOKEN='test', COMMENT_RATCHET_REPO='test/repo',
+                                     COMMENT_RATCHET_RUN_ID='1', GITHUB_OUTPUT=str(output)),
                             capture_output=True, text=True)
     assert result.returncode == 42
     assert not output.exists()
@@ -383,3 +387,31 @@ def test_actionlint_is_a_standalone_required_check():
     for caller in tests.values():
         assert Path(caller.get('uses', '').split('@', 1)[0]).name != 'actionlint.yml'
     assert set(tests['aggregate']['needs']) == set(LEGS)
+
+
+@pytest.mark.parametrize('case,want', [
+    ('legacy', 0), ('legacy-invalid', 1), ('prefixed', 0),
+    ('prefixed-invalid', 1), ('prefixed-empty', 1), ('unset', 1),
+])
+def test_aggregate_environment_fallback_and_precedence(monkeypatch, case, want):
+    good = json.dumps({name: {'result': 'success'} for name in LEGS})
+    bad = 'not json'
+    legacy, prefixed = {
+        'legacy': (good, None), 'legacy-invalid': (bad, None),
+        'prefixed': (bad, good), 'prefixed-invalid': (good, bad),
+        'prefixed-empty': (good, ''), 'unset': (None, None),
+    }[case]
+    monkeypatch.delenv('NEEDS_JSON', raising=False)
+    monkeypatch.delenv('COMMENT_RATCHET_NEEDS_JSON', raising=False)
+    env = dict(os.environ)
+    if legacy is not None:
+        env['NEEDS_JSON'] = legacy
+    if prefixed is not None:
+        env['COMMENT_RATCHET_NEEDS_JSON'] = prefixed
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci/aggregate_gate.py')],
+                            env=env, capture_output=True, text=True, check=False)
+    assert result.returncode == want, result.stderr
+    if want:
+        assert 'CI aggregate failed:' in result.stderr
+    if case == 'unset':
+        assert "'NEEDS_JSON'" in result.stderr

@@ -5,7 +5,7 @@
 [run]
 parallel = True
 patch = subprocess
-source = ${COVERAGE_SOURCE_ROOT?}
+source = ${COMMENT_RATCHET_COVERAGE_SOURCE_ROOT?}
 
 [report]
 include =

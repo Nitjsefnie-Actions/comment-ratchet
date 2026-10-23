@@ -9,7 +9,8 @@ LEGS = ('suites', 'shellcheck', 'comment-share', 'codeql', 'secrets', 'audit')
 
 def main() -> int:
     try:
-        needs = json.loads(os.environ['NEEDS_JSON'])
+        payload = os.environ.get('COMMENT_RATCHET_NEEDS_JSON')
+        needs = json.loads(os.environ['NEEDS_JSON'] if payload is None else payload)
         if not isinstance(needs, dict):
             raise ValueError('needs must be an object')
         failed = [name for name in LEGS if not isinstance(needs.get(name), dict)

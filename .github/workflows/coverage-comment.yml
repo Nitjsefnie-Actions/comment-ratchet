@@ -66,8 +66,8 @@ jobs:
         id: artifact
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
+          COMMENT_RATCHET_REPO: ${{ github.repository }}
+          COMMENT_RATCHET_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
 
@@ -76,10 +76,10 @@ jobs:
           # call would print `false` and be reported as "no artifact" -- the
           # comment silently never appears and nothing goes red.
           if ! gh api -H 'Cache-Control: no-cache' --paginate \
-            "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+            "repos/$COMMENT_RATCHET_REPO/actions/runs/$COMMENT_RATCHET_RUN_ID/artifacts" \
             --jq '.artifacts[]' > artifacts.json
           then
-            echo "listing the artifacts of run $RUN_ID failed" >&2
+            echo "listing the artifacts of run $COMMENT_RATCHET_RUN_ID failed" >&2
             exit 1
           fi
           # Collect every paginated object into one array before selecting.
@@ -100,27 +100,27 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
-          EVENT_NUMBERS: >-
+          COMMENT_RATCHET_REPO: ${{ github.repository }}
+          COMMENT_RATCHET_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          COMMENT_RATCHET_HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          COMMENT_RATCHET_EVENT_NUMBERS: >-
             ${{ toJSON(github.event.workflow_run.pull_requests.*.number) }}
         run: |
           set -euo pipefail
 
           # Deliberately before the download: the destination is settled
           # while nothing the pull request produced is on disk.
-          numbers="$(printf '%s' "$EVENT_NUMBERS" | jq -r 'arrays | .[]' \
+          numbers="$(printf '%s' "$COMMENT_RATCHET_EVENT_NUMBERS" | jq -r 'arrays | .[]' \
             | sort -u)"
           if [ -z "$numbers" ]; then
             # A fork pull request arrives with an empty `pull_requests`, and
             # the base repository does not associate its head commit with a
             # pull request, so ask the head repository which one owns it.
             if ! gh api -H 'Cache-Control: no-cache' --paginate \
-              "repos/$HEAD_REPO/commits/$HEAD_SHA/pulls" \
+              "repos/$COMMENT_RATCHET_HEAD_REPO/commits/$COMMENT_RATCHET_HEAD_SHA/pulls" \
               --jq '.[].number' > pulls.txt
             then
-              echo "listing the pull requests for $HEAD_SHA failed" >&2
+              echo "listing the pull requests for $COMMENT_RATCHET_HEAD_SHA failed" >&2
               exit 1
             fi
             numbers="$(sort -u pulls.txt)"
@@ -133,7 +133,7 @@ jobs:
             exit 0
           fi
           if [ "$count" -ne 1 ]; then
-            echo "expected one pull request for $HEAD_SHA, found $count" >&2
+            echo "expected one pull request for $COMMENT_RATCHET_HEAD_SHA, found $count" >&2
             printf '%s\n' "$numbers" >&2
             exit 1
           fi
@@ -144,7 +144,7 @@ jobs:
               ;;
           esac
           if ! current_sha="$(gh api -H 'Cache-Control: no-cache' \
-            "repos/$REPO/pulls/$numbers" --jq '.head.sha')"
+            "repos/$COMMENT_RATCHET_REPO/pulls/$numbers" --jq '.head.sha')"
           then
             echo "reading the current head of pull request $numbers failed" \
               >&2
@@ -155,8 +155,8 @@ jobs:
             exit 1
           fi
           echo "current_sha=$current_sha" >> "$GITHUB_OUTPUT"
-          if [ "$current_sha" != "$HEAD_SHA" ]; then
-            echo "run $HEAD_SHA is stale; current pull request head is " \
+          if [ "$current_sha" != "$COMMENT_RATCHET_HEAD_SHA" ]; then
+            echo "run $COMMENT_RATCHET_HEAD_SHA is stale; current pull request head is " \
               "$current_sha"
             echo 'stale=true' >> "$GITHUB_OUTPUT"
             exit 0
@@ -172,9 +172,9 @@ jobs:
           && steps.pr.outputs.present != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          COMMENT_RATCHET_REPO: ${{ github.repository }}
+          COMMENT_RATCHET_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          COMMENT_RATCHET_PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
 
@@ -187,13 +187,13 @@ jobs:
           {
             printf '%s\n\n' "$marker"
             printf 'Python coverage was not measured for commit %s.\n' \
-              "$HEAD_SHA"
+              "$COMMENT_RATCHET_HEAD_SHA"
           } > comment.md
           if ! gh api -H 'Cache-Control: no-cache' --paginate \
-            "repos/$REPO/issues/$PR_NUMBER/comments" \
+            "repos/$COMMENT_RATCHET_REPO/issues/$COMMENT_RATCHET_PR_NUMBER/comments" \
             --jq '.[]' > comments.json
           then
-            echo "listing the comments on $PR_NUMBER failed" >&2
+            echo "listing the comments on $COMMENT_RATCHET_PR_NUMBER failed" >&2
             exit 1
           fi
           existing="$(
@@ -204,18 +204,18 @@ jobs:
           )"
           revalidate_head() {
             if ! current_sha="$(gh api -H 'Cache-Control: no-cache' \
-              "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')"
+              "repos/$COMMENT_RATCHET_REPO/pulls/$COMMENT_RATCHET_PR_NUMBER" --jq '.head.sha')"
             then
-              echo "reading the current head of pull request $PR_NUMBER" \
+              echo "reading the current head of pull request $COMMENT_RATCHET_PR_NUMBER" \
                 "failed" >&2
               exit 1
             fi
             if [ -z "$current_sha" ]; then
-              echo "pull request $PR_NUMBER has no current head SHA" >&2
+              echo "pull request $COMMENT_RATCHET_PR_NUMBER has no current head SHA" >&2
               exit 1
             fi
-            if [ "$current_sha" != "$HEAD_SHA" ]; then
-              echo "run $HEAD_SHA is stale; current pull request head is " \
+            if [ "$current_sha" != "$COMMENT_RATCHET_HEAD_SHA" ]; then
+              echo "run $COMMENT_RATCHET_HEAD_SHA is stale; current pull request head is " \
                 "$current_sha"
               return 1
             fi
@@ -230,9 +230,9 @@ jobs:
               if ! revalidate_head; then
                 exit 0
               fi
-              gh api -X PATCH "repos/$REPO/issues/comments/$existing" \
+              gh api -X PATCH "repos/$COMMENT_RATCHET_REPO/issues/comments/$existing" \
                 -F body=@comment.md >/dev/null
-              echo "marked Python coverage as unavailable for $HEAD_SHA"
+              echo "marked Python coverage as unavailable for $COMMENT_RATCHET_HEAD_SHA"
               exit 0
               ;;
           esac
@@ -255,9 +255,9 @@ jobs:
           && steps.pr.outputs.present != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          COMMENT_RATCHET_REPO: ${{ github.repository }}
+          COMMENT_RATCHET_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          COMMENT_RATCHET_PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           set -euo pipefail
 
@@ -266,9 +266,9 @@ jobs:
 
           # Checked, never obeyed. See the header: the producer is untrusted.
           claimed="$(cat pr-number.txt)"
-          if [ "$claimed" != "$PR_NUMBER" ]; then
+          if [ "$claimed" != "$COMMENT_RATCHET_PR_NUMBER" ]; then
             echo "the artifact names pull request '$claimed' but the run" \
-              "belongs to '$PR_NUMBER'; refusing to post" >&2
+              "belongs to '$COMMENT_RATCHET_PR_NUMBER'; refusing to post" >&2
             exit 1
           fi
 
@@ -284,14 +284,14 @@ jobs:
           marker='<!-- comment-ratchet-python-coverage -->'
           {
             printf '%s\n\n' "$marker"
-            printf 'Python coverage for commit %s.\n\n' "$HEAD_SHA"
+            printf 'Python coverage for commit %s.\n\n' "$COMMENT_RATCHET_HEAD_SHA"
             cat body.md
           } > comment.md
           if ! gh api -H 'Cache-Control: no-cache' --paginate \
-            "repos/$REPO/issues/$PR_NUMBER/comments" \
+            "repos/$COMMENT_RATCHET_REPO/issues/$COMMENT_RATCHET_PR_NUMBER/comments" \
             --jq '.[]' > comments.json
           then
-            echo "listing the comments on $PR_NUMBER failed" >&2
+            echo "listing the comments on $COMMENT_RATCHET_PR_NUMBER failed" >&2
             exit 1
           fi
           # Slurped, so pagination cannot yield one id per page, and the
@@ -304,18 +304,18 @@ jobs:
           )"
           revalidate_head() {
             if ! current_sha="$(gh api -H 'Cache-Control: no-cache' \
-              "repos/$REPO/pulls/$PR_NUMBER" --jq '.head.sha')"
+              "repos/$COMMENT_RATCHET_REPO/pulls/$COMMENT_RATCHET_PR_NUMBER" --jq '.head.sha')"
             then
-              echo "reading the current head of pull request $PR_NUMBER" \
+              echo "reading the current head of pull request $COMMENT_RATCHET_PR_NUMBER" \
                 "failed" >&2
               exit 1
             fi
             if [ -z "$current_sha" ]; then
-              echo "pull request $PR_NUMBER has no current head SHA" >&2
+              echo "pull request $COMMENT_RATCHET_PR_NUMBER has no current head SHA" >&2
               exit 1
             fi
-            if [ "$current_sha" != "$HEAD_SHA" ]; then
-              echo "run $HEAD_SHA is stale; current pull request head is " \
+            if [ "$current_sha" != "$COMMENT_RATCHET_HEAD_SHA" ]; then
+              echo "run $COMMENT_RATCHET_HEAD_SHA is stale; current pull request head is " \
                 "$current_sha"
               return 1
             fi
@@ -325,7 +325,7 @@ jobs:
               if ! revalidate_head; then
                 exit 0
               fi
-              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" \
+              gh api -X POST "repos/$COMMENT_RATCHET_REPO/issues/$COMMENT_RATCHET_PR_NUMBER/comments" \
                 -F body=@comment.md >/dev/null
               echo 'posted a new comment'
               ;;
@@ -337,7 +337,7 @@ jobs:
               if ! revalidate_head; then
                 exit 0
               fi
-              gh api -X PATCH "repos/$REPO/issues/comments/$existing" \
+              gh api -X PATCH "repos/$COMMENT_RATCHET_REPO/issues/comments/$existing" \
                 -F body=@comment.md >/dev/null
               echo "updated comment $existing"
               ;;
