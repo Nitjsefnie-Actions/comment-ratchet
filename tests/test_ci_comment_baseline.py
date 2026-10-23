@@ -43,6 +43,22 @@ def test_tighten_lowers_drops_and_never_raises():
         'lower.py': [25, 100], 'rise.py': [20, 100]}
 
 
+@pytest.mark.parametrize('counts,want', [
+    ((30, 100), [30, 100]),
+    ((20, 50), [20, 50]),
+    ((40, 200), [40, 100]),
+    ((39, 50), [40, 100]),
+    ((41, 200), [40, 100]),
+    ((41, 100), [40, 100]),
+    ((40, 80), [40, 100]),
+    ((15, 100), None),
+    ((40, 267), None),
+])
+def test_tighten_requires_fewer_comments_without_a_share_rise(counts, want):
+    expected = {} if want is None else {'x.py': want}
+    assert policy().tightened({'x.py': [40, 100]}, {'x.py': counts}) == expected
+
+
 @pytest.mark.parametrize('entry', [[101, 100], [20.5, 100], [True, 100],
                                    [20, 0], [-1, 100], [20], '20%', [20, 100, 1]])
 def test_invalid_entry_refused(entry):
@@ -113,6 +129,173 @@ def test_tighten_seeds_without_extra_step_and_serializes(repo):
     first = target.read_bytes()
     assert cli(repo, '--mode', 'tighten').returncode == 0
     assert target.read_bytes() == first
+
+
+@pytest.mark.parametrize('code', ['x' * 62, 'x' * 58, 'y' * 60],
+                         ids=['growth', 'shrink', 'replacement'])
+def test_code_only_edits_leave_records_byte_identical(repo, code):
+    source = repo / 'x.py'
+    # # + 39 c = 40 comment bytes; 60 x = 60 code bytes: (40, 100).
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    records = write_records(repo, {'x.py': [40, 100]})
+    commit(repo, 'record policy')
+    before = records.read_bytes()
+    # Comments stay 40; code grows to 62, shrinks to 58, or is replaced at 60.
+    source.write_text('#' + 'c' * 39 + '\n' + code + '\n')
+    commit(repo, 'edit only code')
+    result = cli(repo, '--mode', 'tighten')
+    assert result.returncode == 0, result.stderr
+    assert records.read_bytes() == before
+
+
+@pytest.mark.parametrize('code_bytes', [680, 681])
+def test_code_only_graduation_drops_record(repo, code_bytes):
+    # # + 119 c = 120 comments; 180 x = 180 code bytes: (120, 300).
+    source = repo / 'x.py'
+    source.write_text('#' + 'c' * 119 + '\n' + 'x' * 180 + '\n')
+    records = write_records(repo, {'x.py': [120, 300]})
+    commit(repo, 'record policy')
+    # 120 / (120 + 680) = 15%; one more code byte falls below target.
+    source.write_text('#' + 'c' * 119 + '\n' + 'x' * code_bytes + '\n')
+    commit(repo, 'add code to graduate')
+    result = cli(repo, '--mode', 'tighten')
+    assert result.returncode == 0, result.stderr
+    assert json.loads(records.read_bytes()) == {}
+
+
+@pytest.mark.parametrize('comments,code,want', [(45, 175, 1), (40, 170, 0),
+                                             (41, 164, 0), (39, 150, 0)])
+def test_default_branch_code_growth_sets_pr_limit(repo, comments, code, want):
+    source = repo / 'x.py'
+    # 40 comments (# + 39 c) + 60 code (x) = (40, 100).
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    records = write_records(repo, {'x.py': [40, 100]})
+    commit(repo, 'record policy')
+    before = records.read_bytes()
+    # Same 40 comments + 160 code = (40, 200), without a records commit.
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 160 + '\n')
+    base = commit(repo, 'default branch adds code')
+    tightened = cli(repo, '--mode', 'tighten')
+    assert tightened.returncode == 0, tightened.stderr
+    assert records.read_bytes() == before
+    # Heads: (45, 220), (40, 210), (41, 205), (39, 189).
+    source.write_text('#' + 'c' * (comments - 1) + '\n' + 'x' * code + '\n')
+    commit(repo, 'pr head')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == want, result.stderr
+    if want:
+        assert 'x.py: (45, 220) exceeds [40, 200]' in result.stderr
+
+
+def test_equal_base_share_uses_base_comment_bytes(repo):
+    # # + 79 c = 80 comments; 120 x = 120 code: (80, 200), equal to 40/100.
+    source = repo / 'x.py'
+    source.write_text('#' + 'c' * 79 + '\n' + 'x' * 120 + '\n')
+    write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'equal share base')
+    # Same comments, 110 code: (80, 190), above the share but not comment limit.
+    source.write_text('#' + 'c' * 79 + '\n' + 'x' * 110 + '\n')
+    commit(repo, 'pr removes code')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+
+
+def test_only_changed_files_are_measured_at_base(repo, monkeypatch, capsys):
+    name = 'nested/naïve name.py'
+    source = repo / name
+    source.parent.mkdir()
+    # 40 comments (# + 39 c) + 160 code = (40, 200), below record 40/100.
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 160 + '\n')
+    write_records(repo, {'x.py': [3, 6], name: [40, 100]})
+    base = commit(repo, 'base with unchanged sibling')
+    # 45 comments (# + 44 c) + 175 code = (45, 220), above base 40/200.
+    source.write_text('#' + 'c' * 44 + '\n' + 'x' * 175 + '\n')
+    commit(repo, 'pr changes one file')
+    measure = policy().comment_share.measure_files
+    base_paths = set()
+
+    def observe(root, sources=None):
+        if sources is not None:
+            base_paths.update(sources)
+        return measure(root, sources)
+
+    monkeypatch.setattr(policy().comment_share, 'measure_files', observe)
+    assert policy().run(repo, '.github/comment-share.json', 'check', 15, base) == 1
+    assert f'{name}: (45, 220) exceeds [40, 200]' in capsys.readouterr().err
+    assert base_paths == {name}
+
+
+@pytest.mark.parametrize('comments,code,want', [(45, 60, 1), (40, 50, 0)])
+def test_unmeasurable_base_source_falls_back_to_record(repo, comments, code, want):
+    source = repo / 'x.py'
+    source.write_text('def broken(\n')
+    write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'base source cannot be parsed')
+    with pytest.raises(policy().comment_share.MeasurementError):
+        policy().comment_share.measure_files(repo)
+    # # + (comments - 1) c and code x: head pairs (45, 105) and (40, 90).
+    source.write_text('#' + 'c' * (comments - 1) + '\n' + 'x' * code + '\n')
+    commit(repo, 'pr repairs source')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == want, result.stderr
+    assert 'cannot be parsed' not in result.stderr
+    if want:
+        assert 'x.py: (45, 105) exceeds [40, 100]' in result.stderr
+
+
+def test_code_growth_then_deletion_accepts_current_base_share(repo):
+    source = repo / 'x.py'
+    # 40 comments (# + 39 c) + 60 code (x) = (40, 100).
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    write_records(repo, {'x.py': [40, 100]})
+    commit(repo, 'record policy')
+    # Code grows to 160: (40, 200), then shrinks to 80: (40, 120).
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 160 + '\n')
+    commit(repo, 'default branch adds code')
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 80 + '\n')
+    base = commit(repo, 'default branch removes some code')
+    # 50 comments (# + 49 c) + 100 code = (50, 150), equal to base share.
+    source.write_text('#' + 'c' * 49 + '\n' + 'x' * 100 + '\n')
+    commit(repo, 'pr uses accepted loosening')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+
+
+def test_recorded_file_new_at_base_uses_record(repo):
+    write_records(repo, {'x.py': [3, 6], 'new.py': [40, 100]})
+    base = commit(repo, 'record absent file')
+    # 41 comments (# + 40 c) + 59 code = (41, 100), above both record limbs.
+    (repo / 'new.py').write_text('#' + 'c' * 40 + '\n' + 'x' * 59 + '\n')
+    commit(repo, 'pr adds recorded file')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert 'new.py: (41, 100) exceeds [40, 100]' in result.stderr
+
+
+def test_base_language_is_classified_from_base_content(repo):
+    source = repo / 'tool'
+    source.write_text('x' * 200 + '\n')
+    write_records(repo, {'x.py': [3, 6], 'tool': [40, 100]})
+    base = commit(repo, 'base extensionless file has no recognized language')
+    # #!/bin/sh = 9, # + 30 c = 31, 60 x = 60: head pair (40, 100).
+    source.write_text('#!/bin/sh\n#' + 'c' * 30 + '\n' + 'x' * 60 + '\n')
+    commit(repo, 'pr gives file a shell shebang')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('source,want', [('# c\n', 1), ('x=1\n', 0)])
+def test_empty_base_has_zero_share_limit(repo, source, want):
+    (repo / 'x.py').write_text(' \t\n')
+    write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'empty base source')
+    # Base has (0, 0); heads have (#c = 2) (2, 2) or (x=1 = 3) (0, 3).
+    (repo / 'x.py').write_text(source)
+    commit(repo, 'pr fills empty file')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == want, result.stderr
+    if want:
+        assert 'x.py: (2, 2) exceeds [0, 0]' in result.stderr
 
 
 @pytest.mark.parametrize('head,want,names', [

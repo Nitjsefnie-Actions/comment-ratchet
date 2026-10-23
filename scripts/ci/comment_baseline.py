@@ -17,6 +17,8 @@ Pair = tuple[int, int] | list[int]
 
 
 def above(current: Pair, limit: Pair) -> bool:
+    if limit[1] == 0:
+        return current[0] > 0
     return current[0] * limit[1] > limit[0] * current[1]
 
 
@@ -39,7 +41,8 @@ def tightened(baseline: dict[str, list[int]], measured: dict[str, tuple[int, int
     for path, recorded in baseline.items():
         current = measured.get(path)
         if current is not None and above(current, target):
-            updated[path] = recorded if above(current, recorded) else list(current)
+            updated[path] = (list(current) if current[0] < recorded[0]
+                             and not above(current, recorded) else recorded)
     updated.update({path: pair for path, pair in entries(measured, target).items()
                     if path not in baseline})
     return updated
@@ -108,7 +111,7 @@ def git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
                           check=check, timeout=120)
 
 
-def records_at(root: Path, revision: str, records: str) -> dict[str, list[int]] | None:
+def resolve_ref(root: Path, revision: str) -> str:
     base_input(revision)
     resolved = git(root, 'rev-parse', '--verify', '--end-of-options', f'{revision}^{{commit}}', check=False)
     if resolved.returncode:
@@ -117,7 +120,11 @@ def records_at(root: Path, revision: str, records: str) -> dict[str, list[int]] 
             raise ValueError(f'input base-ref {revision!r} could not be fetched: '
                              + fetched.stderr.decode('utf-8', errors='replace').strip())
         resolved = git(root, 'rev-parse', '--verify', 'FETCH_HEAD^{commit}')
-    sha = resolved.stdout.decode().strip()
+    return resolved.stdout.decode().strip()
+
+
+def records_at(root: Path, revision: str, records: str) -> dict[str, list[int]] | None:
+    sha = resolve_ref(root, revision)
     result = git(root, 'show', f'{sha}:{records}', check=False)
     if result.returncode:
         listed = git(root, 'ls-tree', '-z', sha, '--', records)
@@ -126,6 +133,28 @@ def records_at(root: Path, revision: str, records: str) -> dict[str, list[int]] 
         raise ValueError(f'cannot read records at input base-ref {revision!r}: '
                          + result.stderr.decode('utf-8', errors='replace').strip())
     return decode_records(result.stdout)
+
+
+def measure_changed_at(root: Path, sha: str, paths: set[str]) -> dict[str, tuple[int, int]]:
+    changed = git(root, 'diff', '--no-renames', '--name-only', '-z', sha, 'HEAD', '--')
+    paths = paths.intersection(changed.stdout.decode('utf-8').split('\0'))
+    measured = {}
+    with tempfile.TemporaryDirectory() as directory:
+        tree = Path(directory)
+        for path in sorted(paths):
+            blob = git(root, 'show', f'{sha}:{path}', check=False)
+            if blob.returncode:
+                continue
+            try:
+                source = tree / path
+                source.parent.mkdir(parents=True, exist_ok=True)
+                source.write_bytes(blob.stdout)
+                language = comment_share.language_for(source)
+                if language:
+                    measured.update(comment_share.measure_files(tree, {path: language}))
+            except (OSError, ValueError):
+                continue
+    return measured
 
 
 def write_records(path: Path, data: dict[str, list[int]]) -> None:
@@ -149,10 +178,12 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
         baseline = decode_records(path.read_bytes()) if path.exists() else {}
         measured = comment_share.measure_files(root)
         updated = tightened(baseline, measured, limit)
-        write_records(path, updated)
+        if updated != baseline or not path.exists():
+            write_records(path, updated)
         print(f'{len(updated)} comment-share entries recorded in {records}')
         return 0
-    baseline = records_at(root, base_input(base_ref), records)
+    base_sha = resolve_ref(root, base_ref)
+    baseline = records_at(root, base_sha, records)
     measured = comment_share.measure_files(root)
     if baseline is None:
         head = records_at(root, 'HEAD', records)
@@ -168,6 +199,10 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
         if differing:
             return 1
         baseline = head
+    else:
+        for path, counts in measure_changed_at(root, base_sha, baseline.keys() & measured.keys()).items():
+            if not above(counts, baseline[path]):
+                baseline[path] = list(counts)
     found = violations(measured, baseline, limit)
     for path, detail in sorted(found.items()):
         print(f'{path}: {detail}', file=sys.stderr)
