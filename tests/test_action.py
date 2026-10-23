@@ -11,6 +11,10 @@ import pytest
 from tests.test_ci_comment_baseline import commit, git, repo, write_records
 
 ROOT = Path(__file__).resolve().parents[1]
+BARE = {name: None for name in (
+    'COMMENT_RATCHET_TARGET', 'COMMENT_RATCHET_RECORDS', 'COMMENT_RATCHET_MODE',
+    'COMMENT_RATCHET_BASE_REF', 'COMMENT_RATCHET_DEFAULT_BRANCH',
+)}
 
 
 def action(repo, **overrides):
@@ -23,6 +27,28 @@ def action(repo, **overrides):
     return subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo,
                           env={key: value for key, value in env.items() if value is not None},
                           capture_output=True, text=True, check=False)
+
+
+def metadata_env(repo, inputs=None):
+    """Env block of the action's run step, derived from action.yml alone.
+
+    Optional inputs override the metadata defaults by input name, looked up
+    through the metadata's own env mapping.
+    """
+    inputs = inputs or {}
+    import yaml
+    metadata = yaml.safe_load((ROOT / 'action.yml').read_text())
+    contexts = {'github.event.pull_request.base.sha': git(repo, 'rev-parse', 'HEAD'),
+                'github.event.repository.default_branch': 'main'}
+    defaults = {name: contexts.get(str(item['default'])[4:-3], item['default'])
+                for name, item in metadata['inputs'].items()}
+    step = next(step for step in metadata['runs']['steps'] if 'run' in step)
+    env = {}
+    for env_key, expression in step['env'].items():
+        ref = expression[4:-3]
+        value = inputs.get(ref[7:]) if ref.startswith('inputs.') else contexts[ref]
+        env[env_key] = str(defaults[ref[7:]] if value is None else value)
+    return env
 
 
 @pytest.mark.parametrize('name,value', [
@@ -124,21 +150,28 @@ def test_custom_inputs_reach_policy(repo):
 
 
 def test_bare_uses_defaults_from_metadata(repo):
-    import yaml
-    metadata = yaml.safe_load((ROOT / 'action.yml').read_text())
-    defaults = {name: item['default'] for name, item in metadata['inputs'].items()}
-    contexts = {'github.event.pull_request.base.sha': git(repo, 'rev-parse', 'HEAD'),
-                'github.event.repository.default_branch': 'main'}
-    defaults = {name: contexts.get(str(value)[4:-3], value) for name, value in defaults.items()}
-    step = next(step for step in metadata['runs']['steps'] if 'run' in step)
-    env = {}
-    for name, expression in step['env'].items():
-        key = expression[4:-3]
-        env[name] = str(defaults[key[7:]] if key.startswith('inputs.') else contexts[key])
     write_records(repo, {'x.py': [3, 6]})
     commit(repo, 'exact seed')
-    result = action(repo, **env)
+    result = action(repo, **{**BARE, **metadata_env(repo)})
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('inputs', [
+    {'target': '0'},
+    {'mode': 'tighten', 'records': 'custom.json'},
+])
+def test_metadata_env_mapping_drives_the_action(repo, inputs):
+    target = write_records(repo, {'x.py': [3, 6]})
+    commit(repo, 'exact seed')
+    before = target.read_bytes()
+    result = action(repo, **{**BARE, **metadata_env(repo, inputs)})
+    if 'target' in inputs:
+        assert result.returncode == 1, result.stderr
+        assert 'target' in result.stderr
+    else:
+        assert result.returncode == 0, result.stderr
+        assert json.loads((repo / 'custom.json').read_bytes()) == {'x.py': [3, 6]}
+        assert target.read_bytes() == before
 
 
 def test_typescript_uses_action_dependency_from_consumer_checkout(repo):
