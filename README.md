@@ -135,10 +135,12 @@ between base-ref and head, the effective limit is its measured
 base-ref pair if that share is equal to or lower than its recorded share;
 otherwise it is the recorded pair. Only changed files are measured at base-ref.
 Unchanged files, files new at base-ref and files that cannot be measured there
-use their recorded pair. A recorded file fails only when both its share and
-its comment bytes exceed the effective limit. Equal or lower shares, equal or
-fewer comment bytes, and deleted files pass. Failures name the path and both
-byte pairs.
+use their recorded pair. A file whose base-ref record is above target passes
+when its head share is at or below target, regardless of its measured base-ref
+pair; this is a verdict rule, not a substituted limit pair. Other recorded
+files fail only when both share and comment bytes exceed the effective limit.
+Equal or lower shares, equal or fewer comment bytes, and deleted files pass.
+Failures name the path and both byte pairs.
 
 The effective share limit never exceeds the committed record's share. Code
 added on the default branch tightens later pull requests while it stays there.

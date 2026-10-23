@@ -200,6 +200,55 @@ def test_equal_base_share_uses_base_comment_bytes(repo):
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.parametrize('base_comments,base_code,head_comments,head_code', [
+    (10, 90, 12, 88),
+    (0, 0, 1, 9),
+    (10, 90, 15, 85),
+], ids=['below-target', 'empty-base', 'at-target'])
+def test_graduated_head_passes_above_target_record(repo, base_comments, base_code,
+                                                 head_comments, head_code):
+    source = repo / 'x.py'
+    # Bases: (10, 100) or (0, 0); record 40/100 is above target 15%.
+    source.write_text(('#' + 'c' * (base_comments - 1) if base_comments else '')
+                      + '\n' + 'x' * base_code + '\n')
+    write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'base graduated before records update')
+    # Heads: (12, 100), (1, 10), (15, 100), all at or below target.
+    source.write_text('#' + 'c' * (head_comments - 1) + '\n' + 'x' * head_code + '\n')
+    commit(repo, 'pr head stays graduated')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize('recorded_comments', [10, 15])
+def test_record_at_or_below_target_still_binds_graduated_head(repo, recorded_comments):
+    source = repo / 'x.py'
+    # Base: 10 comments (# + 9 c) + 90 code = (10, 100).
+    source.write_text('#' + 'c' * 9 + '\n' + 'x' * 90 + '\n')
+    write_records(repo, {'x.py': [recorded_comments, 100]})
+    base = commit(repo, 'base record at or below target')
+    # Head: 12 comments (# + 11 c) + 88 code = (12, 100), below 15%.
+    source.write_text('#' + 'c' * 11 + '\n' + 'x' * 88 + '\n')
+    commit(repo, 'pr raises graduated share')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert 'x.py: (12, 100) exceeds [10, 100]' in result.stderr
+
+
+def test_above_target_head_keeps_base_comment_limit(repo):
+    source = repo / 'x.py'
+    # Base: 10 comments (# + 9 c) + 90 code = (10, 100), record 40/100.
+    source.write_text('#' + 'c' * 9 + '\n' + 'x' * 90 + '\n')
+    write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'base below target with stale record')
+    # Head: 12 comments (# + 11 c) + 58 code = (12, 70), above 15%.
+    source.write_text('#' + 'c' * 11 + '\n' + 'x' * 58 + '\n')
+    commit(repo, 'pr head rises above target')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert 'x.py: (12, 70) exceeds [10, 100]' in result.stderr
+
+
 def test_only_changed_files_are_measured_at_base(repo, monkeypatch, capsys):
     name = 'nested/naïve name.py'
     source = repo / name
