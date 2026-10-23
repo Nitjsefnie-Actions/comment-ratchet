@@ -208,7 +208,7 @@ exec "{real_git}" "$@"
             (wrapper / 'git').chmod(0o755)
         if hook.exists():
             hook.chmod(0o755)
-    env = {'RUNNER_TEMP': runtime, 'PUSH_REMOTE': remote, 'COMMENT_RATCHET_REPO': 'test/repo',
+    env = {'RUNNER_TEMP': runtime, 'COMMENT_RATCHET_PUSH_REMOTE': remote, 'COMMENT_RATCHET_REPO': 'test/repo',
            'GITHUB_STEP_SUMMARY': runtime / 'summary'}
     if movement == 'race':
         env['PATH'] = str(wrapper)+os.pathsep+os.environ['PATH']
