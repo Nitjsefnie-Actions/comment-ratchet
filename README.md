@@ -162,7 +162,8 @@ share is equal or lower. It adds newly above-target files and drops deleted
 files or files at or below target. Tighten never raises an existing record.
 Code-only additions, removals or replacements leave the records file
 byte-identical unless a file graduates to or below target, when its entry is
-dropped. Tighten writes changes for the caller to commit.
+dropped, or an unrecorded file moves above target, when its entry is added.
+Tighten writes changes for the caller to commit.
 
 ## Contributing and security
 
