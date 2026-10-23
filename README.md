@@ -130,10 +130,22 @@ current_total` is a rise, even if a rounded percentage would look equal.
 **Check** reads the records file at `base-ref` with Git, independent of head
 edits to that file. If the base object is absent locally, it performs a targeted
 `git fetch --no-tags origin <base-ref>` in the **consumer checkout**, without
-changing HEAD. Each unrecorded file above target and each recorded file above
-its record fails, with its path and both byte pairs. Equal or lower shares
-or equal or fewer comment bytes, deleted files and files back at or below
-target pass.
+changing HEAD. Unrecorded files fail above target. For a recorded file changed
+between base-ref and head, the effective limit is its measured
+base-ref pair if that share is equal to or lower than its recorded share;
+otherwise it is the recorded pair. Only changed files are measured at base-ref.
+Unchanged files, files new at base-ref and files that cannot be measured there
+use their recorded pair. A recorded file fails only when both its share and
+its comment bytes exceed the effective limit. Equal or lower shares, equal or
+fewer comment bytes, and deleted files pass. Failures name the path and both
+byte pairs.
+
+The effective share limit never exceeds the committed record's share. Code
+added on the default branch tightens later pull requests while it stays there.
+If that code is later deleted, check accepts a loosening: with record
+`[40,100]`, a branch that goes to `(40,200)` and then `(40,120)` allows a head
+of `(50,150)` at the base's share. A previously tightened record of `[40,200]`
+would reject that head.
 
 **When the base has no records file**, check falls back to the head commit's
 records file. That seed must contain **exactly** the entries and byte pairs
@@ -141,13 +153,16 @@ that tightening the measured head from scratch would write: nothing looser,
 nothing missing, no extra entries, and no substituted equivalent fraction.
 Every differing entry is named. If neither revision has the file, check fails
 and tells you to run tighten to seed one and commit it. Once the base has a
-records file, **only that base file binds**; a head edit cannot loosen it.
+records file, head edits cannot replace the base records or the effective
+limits above.
 
 **Tighten** seeds an absent records file in one run. For existing records, it
-lowers each pair to the measured pair when the share is equal or lower, keeps
-the old pair when the share rose, adds newly above-target files, and drops
-deleted or graduated files. Tighten never raises an existing record; it writes
-the result for the caller to commit.
+rewrites a pair only when measured comment bytes are fewer and the measured
+share is equal or lower. It adds newly above-target files and drops deleted
+files or files at or below target. Tighten never raises an existing record.
+Code-only additions, removals or replacements leave the records file
+byte-identical unless a file graduates to or below target, when its entry is
+dropped. Tighten writes changes for the caller to commit.
 
 ## Contributing and security
 

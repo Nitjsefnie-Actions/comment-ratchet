@@ -53,7 +53,7 @@ def test_invalid_input_names_the_input(repo, name, value):
     ('workflow_dispatch', '', '', 'check', 0),
 ])
 def test_mode_dispatch(repo, event, ref, default, mode, want):
-    target = write_records(repo, {'x.py': [3, 6]})
+    target = write_records(repo, {'x.py': [4, 6]})
     commit(repo, 'seed')
     before = target.read_bytes()
     result = action(repo, GITHUB_EVENT_NAME=event, GITHUB_REF=ref,
