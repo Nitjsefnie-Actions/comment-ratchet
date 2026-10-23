@@ -321,6 +321,17 @@ def test_absent_base_requires_exact_head_seed(repo, head, want, names):
         assert 'seed' in result.stderr
 
 
+def test_absent_base_records_use_exact_head_seed_for_changed_source(repo):
+    # The repo fixture has #hi = 3 and x=1 = 3: base pair (3, 6), no records.
+    base = git(repo, 'rev-parse', 'HEAD')
+    # # + 7 c = 8 comment bytes; xx = 2 code bytes: head pair (8, 10).
+    (repo / 'x.py').write_text('# ccccccc\nxx\n')
+    write_records(repo, {'x.py': [8, 10]})
+    commit(repo, 'change source and commit exact adoption seed')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+
+
 def test_existing_base_records_bind_even_when_head_is_looser(repo):
     write_records(repo, {'x.py': [2, 6]})
     base = commit(repo, 'base policy')
