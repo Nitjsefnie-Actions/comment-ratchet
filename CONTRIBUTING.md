@@ -92,7 +92,7 @@ it with the PR, because a seedless base uses the head seed under the strict
 fallback rule:
 
 ```bash
-MODE=tighten GITHUB_WORKSPACE="$PWD" python3 -I run.py
+COMMENT_RATCHET_MODE=tighten GITHUB_WORKSPACE="$PWD" python3 -I run.py
 git add .github/comment-share.json
 ```
 

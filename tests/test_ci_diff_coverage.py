@@ -20,7 +20,7 @@ def report(tmp_path, xml, diff):
     return subprocess.run(
         [sys.executable, str(ROOT / '.github/scripts/diff_coverage.py'),
          '--coverage', str(FIXTURES / xml), '--diff', str(FIXTURES / diff)],
-        cwd=ROOT, env=dict(os.environ, COVERAGE_SOURCE_ROOT=str(ROOT),
+        cwd=ROOT, env=dict(os.environ, COMMENT_RATCHET_COVERAGE_SOURCE_ROOT=str(ROOT),
                            COVERAGE_FILE=str(tmp_path / '.coverage')),
         capture_output=True, text=True, check=False)
 

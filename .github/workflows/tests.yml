@@ -64,11 +64,11 @@ jobs:
         # environment. The subprocess patch reaches isolated CLI children;
         # wrapping the shell runner itself would measure none of its Python.
         env:
-          MEASURE_COVERAGE: ${{ matrix.os == 'ubuntu-latest' }}
-          COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
+          COMMENT_RATCHET_MEASURE_COVERAGE: ${{ matrix.os == 'ubuntu-latest' }}
+          COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
           COVERAGE_FILE: ${{ runner.temp }}/comment-ratchet-coverage/.coverage
         run: |
-          if [ "$MEASURE_COVERAGE" = 'true' ]; then
+          if [ "$COMMENT_RATCHET_MEASURE_COVERAGE" = 'true' ]; then
             mkdir -p "$RUNNER_TEMP/comment-ratchet-coverage"
             python3 -m coverage run --rcfile=.coveragerc -m pytest -q
           else
@@ -77,7 +77,7 @@ jobs:
       - name: Record Python coverage
         if: success() && matrix.os == 'ubuntu-latest'
         env:
-          COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
+          COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
           COVERAGE_FILE: ${{ runner.temp }}/comment-ratchet-coverage/.coverage
         run: |
           python3 -m coverage combine --rcfile=.coveragerc
@@ -86,7 +86,7 @@ jobs:
       - name: Write the coverage XML
         if: matrix.os == 'ubuntu-latest'
         env:
-          COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
+          COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
           COVERAGE_FILE: ${{ runner.temp }}/comment-ratchet-coverage/.coverage
         run: python3 -m coverage xml --rcfile=.coveragerc -o coverage.xml
 
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
+      COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
 
     # PR code stays read-only; the trusted coverage-comment workflow writes.
     permissions:
@@ -149,9 +149,9 @@ jobs:
       - name: Package the comment for the trusted commenter
         # Event data stays in env, outside shell program text.
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMENT_RATCHET_PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          printf '%s\n' "$PR_NUMBER" > pr-number.txt
+          printf '%s\n' "$COMMENT_RATCHET_PR_NUMBER" > pr-number.txt
 
       - name: Upload the comment for the trusted commenter
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -224,7 +224,7 @@ jobs:
           fi
       - name: Fold the leg results into one verdict
         env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
+          COMMENT_RATCHET_NEEDS_JSON: ${{ toJSON(needs) }}
         run: python3 scripts/ci/aggregate_gate.py
 
   ratchet:
@@ -250,9 +250,9 @@ jobs:
       - name: Stage changed records for the separate push workflow
         id: stage
         env:
-          BASE_SHA: ${{ github.sha }}
+          COMMENT_RATCHET_BASE_SHA: ${{ github.sha }}
         run: |
-          if [ "$(git rev-parse HEAD)" != "$BASE_SHA" ]; then
+          if [ "$(git rev-parse HEAD)" != "$COMMENT_RATCHET_BASE_SHA" ]; then
             echo 'Checkout does not match the measured run head' >&2
             exit 1
           fi
@@ -268,7 +268,7 @@ jobs:
           fi
           mkdir -p "$RUNNER_TEMP/ratchet-push"
           cp .github/comment-share.json "$RUNNER_TEMP/ratchet-push/comment-share.json"
-          printf '%s\n' "$BASE_SHA" > "$RUNNER_TEMP/ratchet-push/base.txt"
+          printf '%s\n' "$COMMENT_RATCHET_BASE_SHA" > "$RUNNER_TEMP/ratchet-push/base.txt"
           echo 'changed=true' >> "$GITHUB_OUTPUT"
       - name: Upload the changed records
         if: success() && steps.stage.outputs.changed == 'true'

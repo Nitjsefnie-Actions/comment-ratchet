@@ -33,11 +33,11 @@ runs:
       # Inputs are data: none becomes shell program text. -I keeps consumer
       # modules and PYTHONPATH out of Python's import search path.
       env:
-        TARGET: ${{ inputs.target }}
-        RECORDS: ${{ inputs.records }}
-        MODE: ${{ inputs.mode }}
-        BASE_REF: ${{ inputs.base-ref }}
-        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        COMMENT_RATCHET_TARGET: ${{ inputs.target }}
+        COMMENT_RATCHET_RECORDS: ${{ inputs.records }}
+        COMMENT_RATCHET_MODE: ${{ inputs.mode }}
+        COMMENT_RATCHET_BASE_REF: ${{ inputs.base-ref }}
+        COMMENT_RATCHET_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/run.py" --validate-only
         runtime_dir="$(mktemp -d "$RUNNER_TEMP/comment-ratchet.XXXXXX")"

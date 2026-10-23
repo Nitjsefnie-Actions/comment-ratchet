@@ -15,27 +15,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def action(repo, **overrides):
     env = dict(os.environ, GITHUB_WORKSPACE=str(repo), GITHUB_EVENT_NAME='pull_request',
-               DEFAULT_BRANCH='main', GITHUB_REF='refs/pull/1/merge',
-               TARGET='15', RECORDS='.github/comment-share.json', MODE='auto',
-               BASE_REF=git(repo, 'rev-parse', 'HEAD'))
+               COMMENT_RATCHET_DEFAULT_BRANCH='main', GITHUB_REF='refs/pull/1/merge',
+               COMMENT_RATCHET_TARGET='15', COMMENT_RATCHET_RECORDS='.github/comment-share.json',
+               COMMENT_RATCHET_MODE='auto',
+               COMMENT_RATCHET_BASE_REF=git(repo, 'rev-parse', 'HEAD'))
     env.update(overrides)
     return subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo,
-                          env=env, capture_output=True, text=True, check=False)
+                          env={key: value for key, value in env.items() if value is not None},
+                          capture_output=True, text=True, check=False)
 
 
 @pytest.mark.parametrize('name,value', [
-    ('TARGET', '0'), ('TARGET', '-1'), ('TARGET', '15.5'), ('TARGET', 'abc'),
-    ('TARGET', ''), ('TARGET', ' 15'), ('TARGET', '１５'),
-    ('MODE', 'invalid'), ('MODE', ''), ('MODE', 'AUTO'),
-    ('RECORDS', ''), ('RECORDS', '/tmp/policy.json'), ('RECORDS', '../policy.json'),
-    ('RECORDS', 'a/../policy.json'), ('RECORDS', '.'),
-    ('BASE_REF', ''), ('BASE_REF', '--upload-pack=evil'),
-    ('BASE_REF', 'bad\nref'),
+    ('COMMENT_RATCHET_TARGET', '0'), ('COMMENT_RATCHET_TARGET', '-1'),
+    ('COMMENT_RATCHET_TARGET', '15.5'), ('COMMENT_RATCHET_TARGET', 'abc'),
+    ('COMMENT_RATCHET_TARGET', ''), ('COMMENT_RATCHET_TARGET', ' 15'),
+    ('COMMENT_RATCHET_TARGET', '１５'),
+    ('COMMENT_RATCHET_MODE', 'invalid'), ('COMMENT_RATCHET_MODE', ''),
+    ('COMMENT_RATCHET_MODE', 'AUTO'),
+    ('COMMENT_RATCHET_RECORDS', ''), ('COMMENT_RATCHET_RECORDS', '/tmp/policy.json'),
+    ('COMMENT_RATCHET_RECORDS', '../policy.json'),
+    ('COMMENT_RATCHET_RECORDS', 'a/../policy.json'), ('COMMENT_RATCHET_RECORDS', '.'),
+    ('COMMENT_RATCHET_BASE_REF', ''), ('COMMENT_RATCHET_BASE_REF', '--upload-pack=evil'),
+    ('COMMENT_RATCHET_BASE_REF', 'bad\nref'),
 ])
 def test_invalid_input_names_the_input(repo, name, value):
     result = action(repo, **{name: value})
     assert result.returncode != 0
-    assert name.lower().replace('_', '-') in result.stderr
+    assert name.removeprefix('COMMENT_RATCHET_').lower().replace('_', '-') in result.stderr
     assert not (repo / '.github/comment-share.json').exists()
 
 
@@ -57,7 +63,7 @@ def test_mode_dispatch(repo, event, ref, default, mode, want):
     commit(repo, 'seed')
     before = target.read_bytes()
     result = action(repo, GITHUB_EVENT_NAME=event, GITHUB_REF=ref,
-                    DEFAULT_BRANCH=default, MODE=mode)
+                    COMMENT_RATCHET_DEFAULT_BRANCH=default, COMMENT_RATCHET_MODE=mode)
     assert result.returncode == want, result.stderr
     tightened = mode == 'tighten' or (mode == 'auto' and event == 'push' and want == 0)
     if tightened:
@@ -70,13 +76,13 @@ def test_mode_dispatch(repo, event, ref, default, mode, want):
 
 
 def test_forced_tighten_seeds_and_ignores_missing_check_revision(repo):
-    result = action(repo, MODE='tighten', BASE_REF='')
+    result = action(repo, COMMENT_RATCHET_MODE='tighten', COMMENT_RATCHET_BASE_REF='')
     assert result.returncode == 0, result.stderr
     assert json.loads((repo / '.github/comment-share.json').read_text()) == {'x.py': [3, 6]}
 
 
 def test_input_text_never_executes(repo):
-    result = action(repo, MODE='tighten', TARGET='$(touch owned)')
+    result = action(repo, COMMENT_RATCHET_MODE='tighten', COMMENT_RATCHET_TARGET='$(touch owned)')
     assert result.returncode == 1
     assert 'target' in result.stderr
     assert not (repo / 'owned').exists()
@@ -91,7 +97,7 @@ def test_consumer_code_is_not_imported_or_executed(repo):
     (repo / 'a.yaml').write_text('# hi\na: 1\n')
     (repo / 'a.js').write_text('// hi\nconst x=1;\n')
     git(repo, 'add', '.')
-    result = action(repo, MODE='tighten', PYTHONPATH=str(repo),
+    result = action(repo, COMMENT_RATCHET_MODE='tighten', PYTHONPATH=str(repo),
                     COMMENT_RATCHET_ESPREE_DIR=str(repo))
     assert result.returncode == 0, result.stderr
     records = json.loads((repo / '.github/comment-share.json').read_bytes())
@@ -104,13 +110,14 @@ def test_records_symlink_cannot_write_outside_checkout(repo, tmp_path):
     outside = tmp_path.parent / (tmp_path.name + '-outside.json')
     outside.write_text('{}\n')
     (repo / 'policy.json').symlink_to(outside)
-    result = action(repo, MODE='tighten', RECORDS='policy.json')
+    result = action(repo, COMMENT_RATCHET_MODE='tighten', COMMENT_RATCHET_RECORDS='policy.json')
     assert result.returncode == 1 and 'records' in result.stderr
     assert outside.read_text() == '{}\n'
 
 
 def test_custom_inputs_reach_policy(repo):
-    result = action(repo, MODE='tighten', TARGET='50', RECORDS='custom.json')
+    result = action(repo, COMMENT_RATCHET_MODE='tighten', COMMENT_RATCHET_TARGET='50',
+                    COMMENT_RATCHET_RECORDS='custom.json')
     assert result.returncode == 0, result.stderr
     assert json.loads((repo / 'custom.json').read_bytes()) == {}
     assert not (repo / '.github/comment-share.json').exists()
@@ -143,7 +150,35 @@ def test_typescript_uses_action_dependency_from_consumer_checkout(repo):
         f'require("node:fs").writeFileSync({str(marker)!r}, "executed"); throw Error("consumer");')
     (repo / 'a.ts').write_text('// c\nexport const x = 1;\n')
     git(repo, 'add', 'a.ts')
-    result = action(repo, MODE='tighten', NODE_PATH=str(repo / 'node_modules'))
+    result = action(repo, COMMENT_RATCHET_MODE='tighten', NODE_PATH=str(repo / 'node_modules'))
     assert result.returncode == 0, result.stderr
     assert json.loads((repo / '.github/comment-share.json').read_text())['a.ts'] == [3, 18]
     assert not marker.exists()
+
+
+@pytest.mark.parametrize('name,good,bad,message', [
+    ('TARGET', '15', '0', 'target'),
+    ('RECORDS', '.github/comment-share.json', '../policy.json', 'records'),
+    ('MODE', 'auto', 'invalid', 'mode'),
+    ('DEFAULT_BRANCH', 'main', 'other', 'mode'),
+    ('BASE_REF', 'HEAD', '--upload-pack=evil', 'base-ref'),
+])
+@pytest.mark.parametrize('case,want', [
+    ('legacy', 0), ('legacy-invalid', 1), ('prefixed', 0),
+    ('prefixed-invalid', 1), ('prefixed-empty', 1),
+])
+def test_environment_fallback_and_precedence(repo, name, good, bad, message, case, want):
+    write_records(repo, {'x.py': [3, 6]})
+    commit(repo, 'exact seed')
+    legacy, prefixed = {
+        'legacy': (good, None), 'legacy-invalid': (bad, None),
+        'prefixed': (bad, good), 'prefixed-invalid': (good, bad),
+        'prefixed-empty': (good, ''),
+    }[case]
+    overrides = {name: legacy, 'COMMENT_RATCHET_' + name: prefixed}
+    if name == 'DEFAULT_BRANCH':
+        overrides.update(GITHUB_EVENT_NAME='push', GITHUB_REF='refs/heads/main')
+    result = action(repo, **overrides)
+    assert result.returncode == want, result.stderr
+    if want:
+        assert message in result.stderr
