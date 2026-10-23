@@ -11,9 +11,11 @@ import pytest
 from tests.test_ci_comment_baseline import commit, git, repo, write_records
 
 ROOT = Path(__file__).resolve().parents[1]
+# Clear run.py's prefixed and legacy input spellings so only metadata supplies them.
 BARE = {name: None for name in (
     'COMMENT_RATCHET_TARGET', 'COMMENT_RATCHET_RECORDS', 'COMMENT_RATCHET_MODE',
     'COMMENT_RATCHET_BASE_REF', 'COMMENT_RATCHET_DEFAULT_BRANCH',
+    'TARGET', 'RECORDS', 'MODE', 'BASE_REF', 'DEFAULT_BRANCH',
 )}
 
 
