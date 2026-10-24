@@ -15,10 +15,12 @@ name: ratchet push
 # the fetched index. The environment deploy key exists only in the push step,
 # whose ssh-agent is stopped when the step ends.
 #
-# Main movement is checked twice. A three-way records merge preserves
-# intervening changes; conflicts drop the run with a summary. A push rejected
-# while main stood still is an error, while rejection after main moved drops
-# this run's data so the next main run can measure again.
+# Main movement is checked at the merge and again at the push. Any path
+# other than the records file differing between the measured base and
+# fetched main drops the run; records-only movement merges three ways, and
+# a conflict drops it. A push rejected while main stood still is an error,
+# while rejection after main moved drops this run's data so the next main
+# run can measure again.
 #
 # The records commit starts the gate once more. JSON records are not measured
 # source, so tightening again leaves them unchanged. tests.yml stages nothing
@@ -119,6 +121,11 @@ jobs:
           fetched="$(git -C "$scratch" rev-parse FETCH_HEAD)"
           git -C "$scratch" show "$fetched:$records" > "$current"
           if [ "$fetched" != "$base" ]; then
+            if [ -n "$(git -C "$scratch" diff --name-only "$base" "$fetched" -- ':/' ":(exclude)$records")" ]; then
+              echo '::notice::Main moved under the measured tree; the next main push measures again'
+              echo '### Dropped: main moved under the measured tree' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
             if ! git -C "$scratch" show "$base:$records" > "$RUNNER_TEMP/ratchet-base.json"; then
               echo '::notice::Ancestor records are unreadable; the next main push measures again'
               echo '### Dropped: ancestor records could not be read' >> "$GITHUB_STEP_SUMMARY"
