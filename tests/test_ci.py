@@ -155,7 +155,7 @@ def test_tighten_records_commit_stops_the_artifact_loop(tmp_path):
             assert not (runtime / 'ratchet-push').exists()
 
 
-@pytest.mark.parametrize('movement', ['unchanged', 'unrelated', 'records', 'conflict', 'rejected', 'race'])
+@pytest.mark.parametrize('movement', ['unchanged', 'unrelated', 'grew', 'records', 'conflict', 'rejected', 'race'])
 def test_ratchet_push_data_with_real_git(tmp_path, movement):
     from tests.test_ci_comment_baseline import init_repo, commit, git, write_records
     origin = tmp_path / 'origin'
@@ -173,9 +173,13 @@ def test_ratchet_push_data_with_real_git(tmp_path, movement):
     data.mkdir(parents=True)
     (data / 'base.txt').write_text(base+'\n')
     (data / 'comment-share.json').write_text(json.dumps({'x.py': [3, 6], 'y.py': [4, 6]}, indent=2)+'\n')
-    if movement in ('unrelated', 'records', 'conflict'):
+    if movement in ('unrelated', 'grew', 'records', 'conflict'):
         if movement == 'unrelated':
             (origin / 'source.py').write_text('raise RuntimeError("new source must not execute")\n')
+        elif movement == 'grew':
+            # y.py is recorded [4, 6]; growing it on main leaves the run's
+            # measurement stale for that file, the issue's reproduction.
+            (origin / 'y.py').write_text('x = 1\ny = 2\nz = 3\n')
         elif movement == 'records':
             write_records(origin, {'x.py': [4, 6], 'y.py': [3, 6]}).write_text(
                 json.dumps({'x.py': [4, 6], 'y.py': [3, 6]}, indent=2)+'\n')
@@ -219,7 +223,7 @@ exec "{real_git}" "$@"
     result = shell(script, tmp_path, **env)
     assert result.returncode == (1 if movement == 'rejected' else 0), result.stderr
     tip = git(remote, 'rev-parse', 'main')
-    if movement in ('conflict', 'rejected'):
+    if movement in ('conflict', 'rejected', 'unrelated', 'grew'):
         assert tip == fetched
     elif movement == 'race':
         assert tip == race
@@ -229,7 +233,7 @@ exec "{real_git}" "$@"
             'x.py': [3, 6], 'y.py': [3 if movement == 'records' else 4, 6]}
         assert git(remote, 'show', '-s', '--format=%an', tip) == 'github-actions[bot]'
         assert not (runtime / 'ratchet-repo/source.py').exists()
-    if movement in ('conflict', 'race'):
+    if movement in ('conflict', 'race', 'unrelated', 'grew'):
         assert 'Dropped' in (runtime / 'summary').read_text()
 
 
