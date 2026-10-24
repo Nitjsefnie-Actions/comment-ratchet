@@ -165,6 +165,7 @@ def test_ratchet_push_data_with_real_git(tmp_path, movement):
     write_records(origin, {'x.py': [4, 6], 'y.py': [4, 6]}).write_text(
         json.dumps({'x.py': [4, 6], 'y.py': [4, 6]}, indent=2)+'\n')
     (origin / 'source.py').write_text('raise RuntimeError("must never execute")\n')
+    (origin / 'y.py').write_text('x = 1\ny = 2\n')
     base = commit(origin, 'measured base')
     remote = tmp_path / 'remote.git'
     git(tmp_path, 'clone', '-q', '--bare', str(origin), str(remote))
