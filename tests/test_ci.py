@@ -486,3 +486,100 @@ def test_comment_share_records_stage_beside_size_records(tmp_path):
     assert (artifact / 'comment-share.json').read_text()
     assert not (artifact / 'size-baseline.json').exists(), 'unchanged size records stay unstaged'
 
+
+def test_ratchet_push_lands_each_records_file_the_artifact_carries(tmp_path):
+    from tests.test_ci_comment_baseline import init_repo, commit, git
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    git(origin, 'branch', '-M', 'main')
+    (origin / 'source.py').write_text('raise RuntimeError("must never execute")\n')
+    (origin / '.github').mkdir()
+    (origin / '.github/comment-share.json').write_text(
+        json.dumps({'x.py': [4, 6]}, indent=2) + '\n')
+    (origin / '.github/size-baseline.json').write_text(
+        json.dumps({'schema_version': 1, 'baseline': {'big.py': 640}}, indent=2) + '\n')
+    base = commit(origin, 'measured base')
+    remote = tmp_path / 'remote.git'
+    git(tmp_path, 'clone', '-q', '--bare', str(origin), str(remote))
+    runtime = tmp_path / 'run'
+    runtime.mkdir()
+    data = runtime / 'ratchet-data'
+    data.mkdir()
+    (data / 'base.txt').write_text(base + '\n')
+
+    def stage_and_push(files):
+        import shutil
+        shutil.rmtree(runtime / 'ratchet-repo', ignore_errors=True)
+        for name in ('comment-share.json', 'size-baseline.json'):
+            staged = data / name
+            if staged.exists():
+                staged.unlink()
+        for name in files:
+            payload = {
+                'comment-share.json': {'x.py': [3, 6]},
+                'size-baseline.json': {'schema_version': 1, 'baseline': {'big.py': 602}},
+            }[name]
+            (data / name).write_text(json.dumps(payload, indent=2) + '\n')
+        script = 'remote=' + push_script().split('remote=', 1)[1]
+        result = shell(script, tmp_path,
+                       RUNNER_TEMP=runtime,
+                       COMMENT_RATCHET_PUSH_REMOTE=remote,
+                       COMMENT_RATCHET_REPO='test/repo',
+                       GITHUB_STEP_SUMMARY=runtime / 'summary')
+        return result
+
+    # Size records alone land as a records-only commit naming them.
+    result = stage_and_push(['size-baseline.json'])
+    assert result.returncode == 0, result.stderr
+    tip = git(remote, 'rev-parse', 'main')
+    assert git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip) == '.github/size-baseline.json'
+    assert json.loads(git(remote, 'show', f'{tip}:.github/size-baseline.json')) == {
+        'schema_version': 1, 'baseline': {'big.py': 602}}
+
+    # Both staged records land in one records-only commit.
+    git(remote, 'update-ref', 'refs/heads/main', base)
+    result = stage_and_push(['comment-share.json', 'size-baseline.json'])
+    assert result.returncode == 0, result.stderr
+    tip = git(remote, 'rev-parse', 'main')
+    assert sorted(git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip).splitlines()) == [
+        '.github/comment-share.json', '.github/size-baseline.json']
+    assert 'comment-share and size-baseline' in git(remote, 'show', '-s', '--format=%s', tip)
+
+
+def test_ratchet_push_treats_the_other_records_file_as_data(tmp_path):
+    from tests.test_ci_comment_baseline import init_repo, commit, git
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    git(origin, 'branch', '-M', 'main')
+    (origin / 'source.py').write_text('raise RuntimeError("must never execute")\n')
+    (origin / '.github').mkdir()
+    (origin / '.github/comment-share.json').write_text(
+        json.dumps({'x.py': [4, 6]}, indent=2) + '\n')
+    (origin / '.github/size-baseline.json').write_text(
+        json.dumps({'schema_version': 1, 'baseline': {'big.py': 640}}, indent=2) + '\n')
+    base = commit(origin, 'measured base')
+    remote = tmp_path / 'remote.git'
+    git(tmp_path, 'clone', '-q', '--bare', str(origin), str(remote))
+    # Main moves with a size-records edit only; a comment-share run is not stale.
+    (origin / '.github/size-baseline.json').write_text(
+        json.dumps({'schema_version': 1, 'baseline': {'big.py': 602}}, indent=2) + '\n')
+    commit(origin, 'size records only')
+    git(origin, 'push', str(remote), 'HEAD:main')
+    runtime = tmp_path / 'run'
+    runtime.mkdir()
+    data = runtime / 'ratchet-data'
+    data.mkdir()
+    (data / 'base.txt').write_text(base + '\n')
+    (data / 'comment-share.json').write_text(json.dumps({'x.py': [3, 6]}, indent=2) + '\n')
+    script = 'remote=' + push_script().split('remote=', 1)[1]
+    result = shell(script, tmp_path, RUNNER_TEMP=runtime,
+                   COMMENT_RATCHET_PUSH_REMOTE=remote, COMMENT_RATCHET_REPO='test/repo',
+                   GITHUB_STEP_SUMMARY=runtime / 'summary')
+    assert result.returncode == 0, result.stderr
+    tip = git(remote, 'rev-parse', 'main')
+    assert git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip) == '.github/comment-share.json'
+    assert json.loads(git(remote, 'show', f'{tip}:.github/size-baseline.json')) == {
+        'schema_version': 1, 'baseline': {'big.py': 602}}
+    assert 'Dropped' not in ((runtime / 'summary').read_text() if (runtime / 'summary').exists() else '')
