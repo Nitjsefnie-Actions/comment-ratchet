@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-LEGS = ('suites', 'shellcheck', 'comment-share', 'codeql', 'secrets', 'audit')
+LEGS = ('suites', 'shellcheck', 'comment-share', 'size-baseline', 'codeql', 'secrets', 'audit')
 
 
 def fold(results):
@@ -420,3 +420,69 @@ def test_aggregate_environment_fallback_and_precedence(monkeypatch, case, want):
         assert 'CI aggregate failed:' in result.stderr
     if case == 'unset':
         assert "'NEEDS_JSON'" in result.stderr
+
+
+def test_size_baseline_records_stage_through_the_same_artifact(tmp_path):
+    from tests.test_ci_comment_baseline import init_repo, commit, git
+    repo = tmp_path / 'consumer'
+    repo.mkdir()
+    init_repo(repo)
+    (repo / '.github').mkdir()
+
+    def records(baseline):
+        return json.dumps({'schema_version': 1, 'baseline': baseline}, indent=2) + '\n'
+
+    (repo / '.github/size-baseline.json').write_text(records({'big.py': 640}))
+    commit(repo, 'seed the size baseline')
+    steps = workflow('tests.yml')['jobs']['ratchet']['steps']
+    stage = next(step for step in steps if step.get('id') == 'stage')
+    upload, = (step for step in steps
+               if 'name' in step.get('with', {}) and 'path' in step['with'])
+    runtime = tmp_path / 'run'
+    runtime.mkdir()
+    output = runtime / 'output'
+    # A tightened size record rides the same artifact as comment-share's,
+    # and a no-change pass stages nothing.
+    for number, want in [(1, True), (2, False)]:
+        runtime_n = tmp_path / f'run-{number}'
+        runtime_n.mkdir()
+        output = runtime_n / 'output'
+        (repo / '.github/size-baseline.json').write_text(records({'big.py': 602}))
+        result = shell(stage['run'], repo, RUNNER_TEMP=runtime_n, GITHUB_OUTPUT=output,
+                       COMMENT_RATCHET_BASE_SHA=git(repo, 'rev-parse', 'HEAD'))
+        assert result.returncode == 0, result.stderr
+        changed = dict(line.split('=', 1) for line in output.read_text().splitlines())['changed']
+        assert condition(upload['if'], steps={'stage': {'outputs': {'changed': changed}}}) is want
+        if want:
+            artifact = runtime_n / 'ratchet-push'
+            assert (artifact / 'base.txt').read_text().strip() == git(repo, 'rev-parse', 'HEAD')
+            assert json.loads((artifact / 'size-baseline.json').read_text()) == {
+                'schema_version': 1, 'baseline': {'big.py': 602}}
+            commit(repo, 'records only')
+        else:
+            assert not (runtime_n / 'ratchet-push').exists()
+
+
+def test_comment_share_records_stage_beside_size_records(tmp_path):
+    from tests.test_ci_comment_baseline import init_repo, commit, git, write_records
+    repo = tmp_path / 'consumer'
+    repo.mkdir()
+    init_repo(repo)
+    (repo / '.github').mkdir()
+    (repo / '.github/size-baseline.json').write_text(
+        json.dumps({'schema_version': 1, 'baseline': {'big.py': 640}}, indent=2) + '\n')
+    write_records(repo, {'x.py': [4, 6]})
+    commit(repo, 'records')
+    steps = workflow('tests.yml')['jobs']['ratchet']['steps']
+    stage = next(step for step in steps if step.get('id') == 'stage')
+    runtime = tmp_path / 'run'
+    runtime.mkdir()
+    write_records(repo, {'x.py': [3, 6]})
+    result = shell(stage['run'], repo, RUNNER_TEMP=runtime,
+                   GITHUB_OUTPUT=runtime / 'output',
+                   COMMENT_RATCHET_BASE_SHA=git(repo, 'rev-parse', 'HEAD'))
+    assert result.returncode == 0, result.stderr
+    artifact = runtime / 'ratchet-push'
+    assert (artifact / 'comment-share.json').read_text()
+    assert not (artifact / 'size-baseline.json').exists(), 'unchanged size records stay unstaged'
+

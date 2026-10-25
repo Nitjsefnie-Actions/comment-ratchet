@@ -180,6 +180,22 @@ jobs:
           mode: check
           base-ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
+  size-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check line counts against the size baseline
+        # Forced check: workflow_dispatch is an event auto fails closed on.
+        uses: Nitjsefnie-Actions/size-ratchet@67bb01e536611398a3b5cedd3f3cf95fd6e5693e # v1.0.1
+        with:
+          mode: check
+          base-ref: ${{ github.event.pull_request.base.sha || github.sha }}
+
   # The pinned actionlint accepts the documented ./ reusable-workflow syntax;
   # zizmor's newer $/ recommendation is unsupported by that pinned parser.
   codeql:
@@ -199,7 +215,7 @@ jobs:
     # cancelled ancestor. This tree has no classification skips, so every
     # skipped, failed, cancelled or missing leg must fold red.
     # actionlint reports independently; needs can only name this workflow's legs.
-    needs: [suites, shellcheck, comment-share, codeql, secrets, audit]
+    needs: [suites, shellcheck, comment-share, size-baseline, codeql, secrets, audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -247,6 +263,11 @@ jobs:
         uses: ./ # zizmor: ignore[self-repository] exercise this run's checked-out action
         with:
           mode: tighten
+      - name: Tighten the size baseline after the green gate
+        # The pin names the release: the action is consumed from GitHub by SHA.
+        uses: Nitjsefnie-Actions/size-ratchet@67bb01e536611398a3b5cedd3f3cf95fd6e5693e # v1.0.1
+        with:
+          mode: tighten
       - name: Stage changed records for the separate push workflow
         id: stage
         env:
@@ -257,17 +278,24 @@ jobs:
             exit 1
           fi
           changed=0
-          git diff --quiet -- .github/comment-share.json || changed=$?
-          if [ "$changed" -gt 1 ]; then
-            echo "git diff failed with $changed" >&2
-            exit "$changed"
-          fi
+          for records in .github/comment-share.json .github/size-baseline.json; do
+            this=0
+            git diff --quiet -- "$records" || this=$?
+            if [ "$this" -gt 1 ]; then
+              echo "git diff failed with $this" >&2
+              exit "$this"
+            fi
+            if [ "$this" -eq 0 ]; then
+              continue
+            fi
+            mkdir -p "$RUNNER_TEMP/ratchet-push"
+            cp "$records" "$RUNNER_TEMP/ratchet-push/${records##*/}"
+            changed=1
+          done
           if [ "$changed" -eq 0 ]; then
             echo 'changed=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          mkdir -p "$RUNNER_TEMP/ratchet-push"
-          cp .github/comment-share.json "$RUNNER_TEMP/ratchet-push/comment-share.json"
           printf '%s\n' "$COMMENT_RATCHET_BASE_SHA" > "$RUNNER_TEMP/ratchet-push/base.txt"
           echo 'changed=true' >> "$GITHUB_OUTPUT"
       - name: Upload the changed records
