@@ -42,6 +42,7 @@ tests/*
 !tests/test_ci.py
 !tests/run.sh
 !.github/comment-share.json
+!.github/size-baseline.json
 !.github/workflows/tests.yml
 !.github/workflows/actionlint.yml
 !.github/workflows/codeql.yml
