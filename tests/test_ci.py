@@ -438,9 +438,6 @@ def test_size_baseline_records_stage_through_the_same_artifact(tmp_path):
     stage = next(step for step in steps if step.get('id') == 'stage')
     upload, = (step for step in steps
                if 'name' in step.get('with', {}) and 'path' in step['with'])
-    runtime = tmp_path / 'run'
-    runtime.mkdir()
-    output = runtime / 'output'
     # A tightened size record rides the same artifact as comment-share's,
     # and a no-change pass stages nothing.
     for number, want in [(1, True), (2, False)]:
