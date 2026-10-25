@@ -1,5 +1,9 @@
-# PyPI release hashes for the Linux and macOS wheels, CPython 3.8–3.14.
+# PyPI release hashes for the Linux and macOS wheels, CPython 3.8–3.15.
 # A missing compatible wheel fails instead of building unpinned tooling.
+# PyYAML has no CPython 3.15 wheel yet, so its sdist is pinned too and the
+# --no-binary=PyYAML installs build it; the sdist's build dependencies are
+# not hash-checked (pypa/pip#12942) until the cp315 wheels land and this
+# hash and that flag go.
 PyYAML==6.0.3 \
     --hash=sha256:214ed4befebe12df36bcc8bc2b64b396ca31be9304b8f59e25c11cf94a4c033b \
     --hash=sha256:02ea2dfa234451bbb8772601d7b8e426c2bfa197136796224e50e35a78777956 \
@@ -54,4 +58,5 @@ PyYAML==6.0.3 \
     --hash=sha256:5ed875a24292240029e4483f9d4a4b8a1ae08843b9c54f43fcc11e404532a8a5 \
     --hash=sha256:0150219816b6a1fa26fb4699fb7daa9caf09eb1999f3b70fb6e786805e80375a \
     --hash=sha256:fa160448684b4e94d80416c0fa4aac48967a969efe22931448d853ada8baf926 \
-    --hash=sha256:27c0abcb4a5dac13684a37f76e701e054692a9b2d3064b70f5e4eb54810553d7
+    --hash=sha256:27c0abcb4a5dac13684a37f76e701e054692a9b2d3064b70f5e4eb54810553d7 \
+    --hash=sha256:d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f
