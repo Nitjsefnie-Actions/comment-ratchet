@@ -43,13 +43,13 @@ After changing ignore rules, seed a junk file in each kept directory, prove
 
 ## Getting it running
 
-Use Python 3.13.14, Node 24.17.0, Git, bash and ShellCheck. Install the pinned
+Use Python 3.15.1, Node 24.17.0, Git, bash and ShellCheck. Install the pinned
 toolchain into a venv; use the committed npm lockfile:
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
+python3 -m pip install --require-hashes --only-binary=:all: --no-binary=PyYAML -r requirements-test.txt
 npm ci --ignore-scripts --no-audit --no-fund
 tests/run.sh
 shellcheck tests/run.sh

@@ -47,7 +47,7 @@ The `with:` block shows **every input with its default**. Omit it and a bare
 `uses:` step behaves the same on these events. The checkout selects the PR's
 head tree; full history supplies the PR base without retaining a token.
 The action needs a Git checkout, bash, and access to npm and PyPI; it sets up
-Python 3.13.14 and Node 24.17.0 itself. The suite is configured for Ubuntu and
+Python 3.15.1 and Node 24.17.0 itself. The suite is configured for Ubuntu and
 macOS runners. Windows is outside this action's tested runner set.
 
 `auto` checks on `pull_request` and tightens on a `push` to the repository's
@@ -107,7 +107,8 @@ The action parses source as data. Python imports, JavaScript/TypeScript helpers,
 requirements and the npm lockfile all come from the action's own directory;
 consumer modules and package install scripts are not executed. Espree and TypeScript install
 with `npm ci` against committed integrity hashes; PyYAML installs from exact
-version and SHA-256 wheel pins with `pip install --require-hashes` in an
+version and SHA-256 pins, from source on CPython 3.15 until upstream ships
+wheels, with `pip install --require-hashes` in an
 isolated venv. Consumer `PYTHONPATH` is excluded.
 
 ## Ratchet and records
