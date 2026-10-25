@@ -15,7 +15,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: tests-${{ github.ref }}
+  # A push to main is keyed on its SHA so a newer push cannot cancel an older
+  # commit's run; a pull request keeps one group per ref.
+  group: tests-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 jobs:
   shellcheck:
