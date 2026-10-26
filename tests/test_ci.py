@@ -124,48 +124,19 @@ def test_ratchet_empty_key_refuses_before_any_push(tmp_path):
     assert not (tmp_path / 'ratchet-repo').exists()
 
 
-def test_tighten_records_commit_stops_the_artifact_loop(tmp_path):
-    from tests.test_ci_comment_baseline import init_repo, commit, git, cli, write_records
-    repo = tmp_path / 'consumer'
-    repo.mkdir()
-    init_repo(repo)
-    (repo / 'x.py').write_text('# hi\nx=1\n')
-    write_records(repo, {'x.py': [4, 6]})
-    commit(repo, 'old records')
-    steps = workflow('tests.yml')['jobs']['ratchet']['steps']
-    stage = next(step for step in steps if step.get('id') == 'stage')
-    upload, = (step for step in steps
-               if 'name' in step.get('with', {}) and 'path' in step['with'])
-    for number, want in [(1, True), (2, False)]:
-        runtime = tmp_path / f'run-{number}'
-        runtime.mkdir()
-        output = runtime / 'output'
-        assert cli(repo, '--mode', 'tighten').returncode == 0
-        result = shell(stage['run'], repo, RUNNER_TEMP=runtime, GITHUB_OUTPUT=output,
-                       COMMENT_RATCHET_BASE_SHA=git(repo, 'rev-parse', 'HEAD'))
-        assert result.returncode == 0, result.stderr
-        changed = dict(line.split('=', 1) for line in output.read_text().splitlines())['changed']
-        assert condition(upload['if'], steps={'stage': {'outputs': {'changed': changed}}}) is want
-        if want:
-            artifact = runtime / 'ratchet-push'
-            assert (artifact / 'base.txt').read_text().strip() == git(repo, 'rev-parse', 'HEAD')
-            assert json.loads((artifact / 'comment-share.json').read_text()) == {'x.py': [3, 6]}
-            commit(repo, 'records only')
-        else:
-            assert not (runtime / 'ratchet-push').exists()
-
-
-@pytest.mark.parametrize('movement', ['unchanged', 'unrelated', 'grew', 'records', 'conflict', 'rejected', 'race'])
+@pytest.mark.parametrize('movement', ['unchanged', 'unrelated', 'records', 'conflict', 'rejected', 'race'])
 def test_ratchet_push_data_with_real_git(tmp_path, movement):
-    from tests.test_ci_comment_baseline import init_repo, commit, git, write_records
+    from tests.test_ci_comment_baseline import init_repo, commit, git
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
     git(origin, 'branch', '-M', 'main')
-    write_records(origin, {'x.py': [4, 6], 'y.py': [4, 6]}).write_text(
-        json.dumps({'x.py': [4, 6], 'y.py': [4, 6]}, indent=2)+'\n')
+    (origin / '.github').mkdir()
+    (origin / '.github/size-baseline.json').write_text(
+        # A middle entry keeps the two sides' changed lines apart: git's
+        # three-way merge conflicts on adjacent changed lines.
+        json.dumps({'schema_version': 1, 'baseline': {'big.py': 640, 'mid.py': 700, 'tall.py': 900}}, indent=2)+'\n')
     (origin / 'source.py').write_text('raise RuntimeError("must never execute")\n')
-    (origin / 'y.py').write_text('x = 1\ny = 2\n')
     base = commit(origin, 'measured base')
     remote = tmp_path / 'remote.git'
     git(tmp_path, 'clone', '-q', '--bare', str(origin), str(remote))
@@ -173,19 +144,19 @@ def test_ratchet_push_data_with_real_git(tmp_path, movement):
     data = runtime / 'ratchet-data'
     data.mkdir(parents=True)
     (data / 'base.txt').write_text(base+'\n')
-    (data / 'comment-share.json').write_text(json.dumps({'x.py': [3, 6], 'y.py': [4, 6]}, indent=2)+'\n')
-    if movement in ('unrelated', 'grew', 'records', 'conflict'):
+    (data / 'size-baseline.json').write_text(
+        json.dumps({'schema_version': 1, 'baseline': {'big.py': 602, 'mid.py': 700, 'tall.py': 900}}, indent=2)+'\n')
+    if movement in ('unrelated', 'records', 'conflict'):
         if movement == 'unrelated':
             (origin / 'source.py').write_text('raise RuntimeError("new source must not execute")\n')
-        elif movement == 'grew':
-            # y.py is recorded [4, 6]; growing it on main leaves the run's
-            # measurement stale for that file, the issue's reproduction.
-            (origin / 'y.py').write_text('x = 1\ny = 2\nz = 3\n')
         elif movement == 'records':
-            write_records(origin, {'x.py': [4, 6], 'y.py': [3, 6]}).write_text(
-                json.dumps({'x.py': [4, 6], 'y.py': [3, 6]}, indent=2)+'\n')
+            # Main moved the tall.py entry while the run staged big.py: the
+            # three-way merge combines both and lands.
+            (origin / '.github/size-baseline.json').write_text(
+                json.dumps({'schema_version': 1, 'baseline': {'big.py': 640, 'mid.py': 700, 'tall.py': 850}}, indent=2)+'\n')
         else:
-            write_records(origin, {'x.py': [2, 6], 'y.py': [4, 6]})
+            (origin / '.github/size-baseline.json').write_text(
+                json.dumps({'schema_version': 1, 'baseline': {'big.py': 300}}, indent=2)+'\n')
         commit(origin, 'main moved')
         git(origin, 'push', str(remote), 'HEAD:main')
     fetched = git(remote, 'rev-parse', 'main')
@@ -224,17 +195,19 @@ exec "{real_git}" "$@"
     result = shell(script, tmp_path, **env)
     assert result.returncode == (1 if movement == 'rejected' else 0), result.stderr
     tip = git(remote, 'rev-parse', 'main')
-    if movement in ('conflict', 'rejected', 'unrelated', 'grew'):
+    if movement in ('conflict', 'rejected', 'unrelated'):
         assert tip == fetched
     elif movement == 'race':
         assert tip == race
     else:
-        assert git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip) == '.github/comment-share.json'
-        assert json.loads(git(remote, 'show', f'{tip}:.github/comment-share.json')) == {
-            'x.py': [3, 6], 'y.py': [3 if movement == 'records' else 4, 6]}
+        assert git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip) == '.github/size-baseline.json'
+        assert json.loads(git(remote, 'show', f'{tip}:.github/size-baseline.json')) == {
+            'schema_version': 1, 'baseline': {'big.py': 602,
+                                              'mid.py': 700,
+                                              'tall.py': 900 if movement != 'records' else 850}}
         assert git(remote, 'show', '-s', '--format=%an', tip) == 'github-actions[bot]'
         assert not (runtime / 'ratchet-repo/source.py').exists()
-    if movement in ('conflict', 'race', 'unrelated', 'grew'):
+    if movement in ('conflict', 'race', 'unrelated'):
         assert 'Dropped' in (runtime / 'summary').read_text()
 
 
@@ -460,7 +433,9 @@ def test_size_baseline_records_stage_through_the_same_artifact(tmp_path):
             assert not (runtime_n / 'ratchet-push').exists()
 
 
-def test_comment_share_records_stage_beside_size_records(tmp_path):
+def test_comment_share_records_stages_nothing(tmp_path):
+    # Comment-share records are maintained by pull requests; the stage step
+    # leaves a changed comment-share file out of the push artifact.
     from tests.test_ci_comment_baseline import init_repo, commit, git, write_records
     repo = tmp_path / 'consumer'
     repo.mkdir()
@@ -479,12 +454,10 @@ def test_comment_share_records_stage_beside_size_records(tmp_path):
                    GITHUB_OUTPUT=runtime / 'output',
                    COMMENT_RATCHET_BASE_SHA=git(repo, 'rev-parse', 'HEAD'))
     assert result.returncode == 0, result.stderr
-    artifact = runtime / 'ratchet-push'
-    assert (artifact / 'comment-share.json').read_text()
-    assert not (artifact / 'size-baseline.json').exists(), 'unchanged size records stay unstaged'
+    assert not (runtime / 'ratchet-push').exists(), 'comment-share records stage nothing'
 
 
-def test_ratchet_push_lands_each_records_file_the_artifact_carries(tmp_path):
+def test_ratchet_push_lands_the_staged_size_records(tmp_path):
     from tests.test_ci_comment_baseline import init_repo, commit, git
     origin = tmp_path / 'origin'
     origin.mkdir()
@@ -492,8 +465,6 @@ def test_ratchet_push_lands_each_records_file_the_artifact_carries(tmp_path):
     git(origin, 'branch', '-M', 'main')
     (origin / 'source.py').write_text('raise RuntimeError("must never execute")\n')
     (origin / '.github').mkdir()
-    (origin / '.github/comment-share.json').write_text(
-        json.dumps({'x.py': [4, 6]}, indent=2) + '\n')
     (origin / '.github/size-baseline.json').write_text(
         json.dumps({'schema_version': 1, 'baseline': {'big.py': 640}}, indent=2) + '\n')
     base = commit(origin, 'measured base')
@@ -519,12 +490,11 @@ def test_ratchet_push_lands_each_records_file_the_artifact_carries(tmp_path):
             }[name]
             (data / name).write_text(json.dumps(payload, indent=2) + '\n')
         script = 'remote=' + push_script().split('remote=', 1)[1]
-        result = shell(script, tmp_path,
-                       RUNNER_TEMP=runtime,
-                       COMMENT_RATCHET_PUSH_REMOTE=remote,
-                       COMMENT_RATCHET_REPO='test/repo',
-                       GITHUB_STEP_SUMMARY=runtime / 'summary')
-        return result
+        return shell(script, tmp_path,
+                     RUNNER_TEMP=runtime,
+                     COMMENT_RATCHET_PUSH_REMOTE=remote,
+                     COMMENT_RATCHET_REPO='test/repo',
+                     GITHUB_STEP_SUMMARY=runtime / 'summary')
 
     # Size records alone land as a records-only commit naming them.
     result = stage_and_push(['size-baseline.json'])
@@ -534,17 +504,24 @@ def test_ratchet_push_lands_each_records_file_the_artifact_carries(tmp_path):
     assert json.loads(git(remote, 'show', f'{tip}:.github/size-baseline.json')) == {
         'schema_version': 1, 'baseline': {'big.py': 602}}
 
-    # Both staged records land in one records-only commit.
+    # A comment-share file staged beside it never lands: pull requests
+    # carry comment-share records, never the push chain.
     git(remote, 'update-ref', 'refs/heads/main', base)
     result = stage_and_push(['comment-share.json', 'size-baseline.json'])
     assert result.returncode == 0, result.stderr
     tip = git(remote, 'rev-parse', 'main')
-    assert sorted(git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip).splitlines()) == [
-        '.github/comment-share.json', '.github/size-baseline.json']
-    assert 'comment-share and size-baseline' in git(remote, 'show', '-s', '--format=%s', tip)
+    assert git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip) == '.github/size-baseline.json'
+    assert json.loads(git(remote, 'show', f'{tip}:.github/size-baseline.json')) == {
+        'schema_version': 1, 'baseline': {'big.py': 602}}
+    assert subprocess.run(['git', '-C', str(remote), 'cat-file', '-e',
+                           f'{tip}:.github/comment-share.json'],
+                          capture_output=True).returncode != 0
 
 
-def test_ratchet_push_treats_the_other_records_file_as_data(tmp_path):
+def test_ratchet_push_counts_comment_share_records_as_movement(tmp_path):
+    # Comment-share records ride pull requests now: a main move that touches
+    # only comment-share.json is movement under the measured tree, and the
+    # stale size run drops so the next main push measures again.
     from tests.test_ci_comment_baseline import init_repo, commit, git
     origin = tmp_path / 'origin'
     origin.mkdir()
@@ -559,24 +536,24 @@ def test_ratchet_push_treats_the_other_records_file_as_data(tmp_path):
     base = commit(origin, 'measured base')
     remote = tmp_path / 'remote.git'
     git(tmp_path, 'clone', '-q', '--bare', str(origin), str(remote))
-    # Main moves with a size-records edit only; a comment-share run is not stale.
-    (origin / '.github/size-baseline.json').write_text(
-        json.dumps({'schema_version': 1, 'baseline': {'big.py': 602}}, indent=2) + '\n')
-    commit(origin, 'size records only')
+    # Main moves with a comment-share records edit only.
+    (origin / '.github/comment-share.json').write_text(
+        json.dumps({'x.py': [3, 6]}, indent=2) + '\n')
+    commit(origin, 'comment-share records only')
     git(origin, 'push', str(remote), 'HEAD:main')
     runtime = tmp_path / 'run'
     runtime.mkdir()
     data = runtime / 'ratchet-data'
     data.mkdir()
     (data / 'base.txt').write_text(base + '\n')
-    (data / 'comment-share.json').write_text(json.dumps({'x.py': [3, 6]}, indent=2) + '\n')
+    (data / 'size-baseline.json').write_text(
+        json.dumps({'schema_version': 1, 'baseline': {'big.py': 602}}, indent=2) + '\n')
+    fetched = git(remote, 'rev-parse', 'main')
     script = 'remote=' + push_script().split('remote=', 1)[1]
     result = shell(script, tmp_path, RUNNER_TEMP=runtime,
                    COMMENT_RATCHET_PUSH_REMOTE=remote, COMMENT_RATCHET_REPO='test/repo',
                    GITHUB_STEP_SUMMARY=runtime / 'summary')
     assert result.returncode == 0, result.stderr
-    tip = git(remote, 'rev-parse', 'main')
-    assert git(remote, 'diff-tree', '--no-commit-id', '--name-only', '-r', tip) == '.github/comment-share.json'
-    assert json.loads(git(remote, 'show', f'{tip}:.github/size-baseline.json')) == {
-        'schema_version': 1, 'baseline': {'big.py': 602}}
-    assert 'Dropped' not in ((runtime / 'summary').read_text() if (runtime / 'summary').exists() else '')
+    assert git(remote, 'rev-parse', 'main') == fetched
+    summary = runtime / 'summary'
+    assert summary.exists() and 'Dropped' in summary.read_text()

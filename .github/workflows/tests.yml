@@ -246,7 +246,8 @@ jobs:
   ratchet:
     # Staging is keyless and follows the whole gate, not just one matrix cell.
     # A records-only push runs this once more, but the no-change stage below
-    # emits no artifact and terminates the push chain.
+    # emits no artifact and terminates the push chain. Comment-share records
+    # are not staged: pull requests carry them (see README, Install).
     needs: aggregate
     if: >-
       success() && needs.aggregate.result == 'success' &&
@@ -259,10 +260,6 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Tighten records after the green gate
-        uses: ./ # zizmor: ignore[self-repository] exercise this run's checked-out action
-        with:
-          mode: tighten
       - name: Tighten the size baseline after the green gate
         # The pin names the release: the action is consumed from GitHub by SHA.
         uses: Nitjsefnie-Actions/size-ratchet@0c9790acfe6bec19f1310a6e17428332185ea3ec # v1.1.0
@@ -278,7 +275,7 @@ jobs:
             exit 1
           fi
           changed=0
-          for records in .github/comment-share.json .github/size-baseline.json; do
+          for records in .github/size-baseline.json; do
             this=0
             git diff --quiet -- "$records" || this=$?
             if [ "$this" -gt 1 ]; then

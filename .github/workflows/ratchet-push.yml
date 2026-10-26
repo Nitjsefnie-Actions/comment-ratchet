@@ -1,12 +1,15 @@
 name: ratchet push
 
-# The data-only push half of the comment ratchet. The gate executes proposed
+# The data-only push half of the size ratchet. The gate executes proposed
 # code and stays keyless. The push lives HERE, a top-level workflow where
 # environment: main-push resolves, keyed on the tests run's completion.
+# Comment-share records are not delivered this way: pull requests carry
+# them (the README install block's check names each entry and pair), so a
+# records change never needs a default-branch commit.
 #
 # tests.yml stages ratchet-push only after its aggregate is green on main.
-# This workflow lists that triggering run's artifacts, downloads the records
-# when present, and pushes a records-only commit when there is a change.
+# This workflow lists that triggering run's artifacts, downloads the size
+# baseline when present, and pushes a records-only commit when it changed.
 #
 # THE GATE PROTECTS THE PUSH TWICE: only a fully green main gate stages data,
 # and only a completed successful push run reaches this job. No code is
@@ -16,8 +19,8 @@ name: ratchet push
 # whose ssh-agent is stopped when the step ends.
 #
 # Main movement is checked at the merge and again at the push. Any path
-# other than the records files differing between the measured base and
-# fetched main drops the run; records-only movement merges three ways, and
+# other than the size baseline differing between the measured base and
+# fetched main drops the run; a records-only move merges three ways, and
 # a conflict drops it. A push rejected while main stood still is an error,
 # while rejection after main moved drops this run's data so the next main
 # run can measure again.
@@ -117,55 +120,44 @@ jobs:
           git -C "$scratch" remote add origin "$remote"
           git -C "$scratch" fetch --quiet origin main
           fetched="$(git -C "$scratch" rev-parse FETCH_HEAD)"
-          # Records edits alone are not movement: exclude both records paths.
-          if [ "$fetched" != "$base" ] && [ -n "$(git -C "$scratch" diff --name-only "$base" "$fetched" -- ':/' ':(exclude).github/comment-share.json' ':(exclude).github/size-baseline.json')" ]; then
+          # Records edits alone are not movement: exclude the size path.
+          if [ "$fetched" != "$base" ] && [ -n "$(git -C "$scratch" diff --name-only "$base" "$fetched" -- ':/' ':(exclude).github/size-baseline.json')" ]; then
             echo '::notice::Main moved under the measured tree; the next main push measures again'
             echo '### Dropped: main moved under the measured tree' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          # Land only the records files the run staged, each merged three
-          # ways so records edits made between the base and the push survive.
+          # Land the records file the run staged, merged three ways so size
+          # records edits made between the base and the push survive.
           git -C "$scratch" read-tree "$fetched"
-          land() {
-            records="$1"
-            file="${records##*/}"
-            current="$RUNNER_TEMP/ratchet-current-$file"
-            # A missing records file on main is a deletion requiring review.
-            git -C "$scratch" show "$fetched:$records" > "$current"
-            if [ "$fetched" != "$base" ]; then
-              if ! git -C "$scratch" show "$base:$records" > "$RUNNER_TEMP/ratchet-base-$file"; then
-                echo '::notice::Ancestor records are unreadable; the next main push measures again'
-                echo '### Dropped: ancestor records could not be read' >> "$GITHUB_STEP_SUMMARY"
-                exit 0
-              fi
-              if ! git merge-file "$current" "$RUNNER_TEMP/ratchet-base-$file" "$RUNNER_TEMP/ratchet-data/$file"; then
-                echo '::notice::Records changes conflict; the next main push measures again'
-                echo '### Dropped: records merge conflicted' >> "$GITHUB_STEP_SUMMARY"
-                exit 0
-              fi
-            else
-              cp "$RUNNER_TEMP/ratchet-data/$file" "$current"
-            fi
-            # Parse data with the runner's standard library, never a fetched
-            # helper. A merge that broke JSON cannot be published.
-            if ! python3 -m json.tool "$current" >/dev/null; then
-              echo '::notice::Merged records are invalid; the next main push measures again'
-              echo '### Dropped: records failed JSON validation' >> "$GITHUB_STEP_SUMMARY"
+          records=.github/size-baseline.json
+          file="${records##*/}"
+          current="$RUNNER_TEMP/ratchet-current-$file"
+          # A missing records file on main is a deletion requiring review.
+          git -C "$scratch" show "$fetched:$records" > "$current"
+          if [ "$fetched" != "$base" ]; then
+            if ! git -C "$scratch" show "$base:$records" > "$RUNNER_TEMP/ratchet-base-$file"; then
+              echo '::notice::Ancestor records are unreadable; the next main push measures again'
+              echo '### Dropped: ancestor records could not be read' >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
-            # Only the records blobs join the fetched index.
-            blob="$(git -C "$scratch" hash-object -w "$current")"
-            git -C "$scratch" update-index --add --cacheinfo 100644 "$blob" "$records"
-          }
-          landed=''
-          if [ -f "$RUNNER_TEMP/ratchet-data/comment-share.json" ]; then
-            land .github/comment-share.json
-            landed='comment-share'
+            if ! git merge-file "$current" "$RUNNER_TEMP/ratchet-base-$file" "$RUNNER_TEMP/ratchet-data/$file"; then
+              echo '::notice::Records changes conflict; the next main push measures again'
+              echo '### Dropped: records merge conflicted' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          else
+            cp "$RUNNER_TEMP/ratchet-data/$file" "$current"
           fi
-          if [ -f "$RUNNER_TEMP/ratchet-data/size-baseline.json" ]; then
-            land .github/size-baseline.json
-            landed="${landed:+$landed and }size-baseline"
+          # Parse data with the runner's standard library, never a fetched
+          # helper. A merge that broke JSON cannot be published.
+          if ! python3 -m json.tool "$current" >/dev/null; then
+            echo '::notice::Merged records are invalid; the next main push measures again'
+            echo '### Dropped: records failed JSON validation' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
+          # Only the records blob joins the fetched index.
+          blob="$(git -C "$scratch" hash-object -w "$current")"
+          git -C "$scratch" update-index --add --cacheinfo 100644 "$blob" "$records"
           tree="$(git -C "$scratch" write-tree)"
           if [ "$tree" = "$(git -C "$scratch" rev-parse "$fetched^{tree}")" ]; then
             echo 'No ratchet move is justified by this run: nothing to commit.'
@@ -173,7 +165,7 @@ jobs:
           fi
           git -C "$scratch" config user.name 'github-actions[bot]'
           git -C "$scratch" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          commit="$(git -C "$scratch" commit-tree "$tree" -p "$fetched" -m "chore(ratchet): tighten $landed records (automated)")"
+          commit="$(git -C "$scratch" commit-tree "$tree" -p "$fetched" -m 'chore(ratchet): tighten size-baseline records (automated)')"
           if ! git -C "$scratch" push origin "$commit:refs/heads/main"; then
             git -C "$scratch" fetch --quiet origin main
             if [ "$fetched" = "$(git -C "$scratch" rev-parse FETCH_HEAD)" ]; then
