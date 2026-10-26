@@ -379,3 +379,25 @@ def test_renamed_recorded_file_moves_its_entry(tmp_path):
     write_records(origin, {'renamed.py': [40, 100]})
     commit(origin, 'carry the moved entry')
     assert cli(origin, '--base-ref', base).returncode == 0
+
+
+def test_unchanged_over_record_file_named_not_failed(tmp_path):
+    # Main already holds a recorded file above its record on both dimensions
+    # (the issue 69 reproduction: a grown file every gate let past). A pull
+    # request that does not touch it passes, naming the file with both pairs
+    # and the documented repair path, as a notice — never a failure.
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    (origin / 'a.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
+    (origin / 'b.py').write_text('x = 1\n')
+    write_records(origin, {'a.py': [40, 100]})
+    base = commit(origin, 'main holds a file above its record')
+    (origin / 'b.py').write_text('x = 1\ny = 2\n')
+    commit(origin, 'a pull request that does not touch a.py')
+    result = cli(origin, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+    assert 'a.py: (45, 105) exceeds its record [40, 100]' in result.stderr
+    assert 'a pull request touching the file must bring it back' in result.stderr
+    assert '::notice::' in result.stdout
+    assert 'a.py: (45, 105)' in result.stdout
