@@ -207,14 +207,13 @@ while a loose record waits for a pull request to repair it.
 **Two repairs a pull request can land.** Two green pull requests can merge
 into a tree tighten would change: one graduates a file and drops its entry
 while another, branched earlier, adds comments within that file's old record,
-and the merge sits above the target with no entry. A pull request that does
-not change that file is never failed for the skew, and the pull request that
-changes the file carries the tightened entry its check names. Separately, a
-file whose merged pair exceeds its tightened record — tighten never raises
-one — gets the second repair: a pull request touching that file must bring
-it back within the effective limit, reducing its comment bytes or its share
-and landing the lowered record in the same pull request when the reduction
-lowers the record.
+and the merge sits above the target with no entry. For a file the pull
+request does not change, the repair is records-only: land the entry the
+notice names, or lower an untouched record (a raising or loosening
+records-only edit fails naming the base pair). For a file the pull request
+does change, the repair is trimming the file below the target — recording is
+never a repair — or bringing it back within the effective limit and landing
+the lowered record in the same pull request when the reduction lowers one.
 
 ## Contributing and security
 
