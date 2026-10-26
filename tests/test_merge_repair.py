@@ -340,3 +340,39 @@ def test_every_untouched_over_record_entry_is_named(tmp_path):
     assert 'c.sh: (4, 4) exceeds the target (15, 100)' in result.stderr
     assert 'may land the entry [4, 4]' in result.stderr
     assert result.stdout.count('::notice::') == 2
+
+
+def test_stale_pr_judged_against_the_merge_base(tmp_path):
+    # Main moves f.py after the branch point (halved at an equal share, its
+    # record lowered): a stale pull request touching only b.py is judged on
+    # its own merge-base diff and passes, never on files main moved.
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    (origin / 'f.py').write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    (origin / 'b.py').write_text('x = 1\n')
+    write_records(origin, {'f.py': [40, 100]})
+    base = commit(origin, 'base')
+    git(origin, 'branch', '-M', 'main')
+    git(origin, 'checkout', '-q', '-b', 'pr')
+    (origin / 'b.py').write_text('x = 1\ny = 2\n')
+    commit(origin, 'a pull request that touches only b.py')
+    git(origin, 'checkout', '-q', 'main')
+    # Main halves f.py at the same share and lowers its record.
+    (origin / 'f.py').write_text('#' + 'c' * 19 + '\n' + 'x' * 30 + '\n')
+    write_records(origin, {'f.py': [20, 50]})
+    commit(origin, 'main halves f.py')
+    git(origin, 'checkout', '-q', 'pr')
+    main_tip = git(origin, 'rev-parse', 'main')
+    result = cli(origin, '--base-ref', main_tip)
+    assert result.returncode == 0, result.stderr
+    assert '~ f.py' not in result.stderr
+    assert '- f.py' not in result.stderr
+    assert '+ f.py' not in result.stderr
+    # A pull request that itself moves f.py is still judged from the tip.
+    (origin / 'f.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
+    write_records(origin, {'f.py': [44, 105]})
+    commit(origin, 'the pull request also moves f.py')
+    moved = cli(origin, '--base-ref', main_tip)
+    assert moved.returncode == 1
+    assert '~ f.py: required [20, 50], recorded [44, 105]' in moved.stderr
