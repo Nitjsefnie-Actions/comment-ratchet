@@ -136,23 +136,39 @@ def records_at(root: Path, revision: str, records: str) -> dict[str, list[int]] 
 
 
 def changed_paths(root: Path, sha: str) -> set[str]:
+    """The paths this pull request changes, from the branch point onward.
+
+    Renames are judged as a delete plus an add, so a renamed recorded file
+    cannot carry its old entry under a new name.
+    """
     listed = git(root, 'diff', '--no-renames', '--name-only', '-z', sha, 'HEAD', '--')
     return {path for path in listed.stdout.decode('utf-8').split('\0') if path}
 
 
 def records_diff(required: dict[str, list[int]], actual: dict[str, list[int]],
                  optional: set[str] = frozenset(),
-                 accepted: dict[str, list[int]] | None = None) -> list[str]:
+                 accepted: dict[str, list[int]] | None = None,
+                 origin: dict[str, list[int]] | None = None) -> list[str]:
     lines = []
     for path in sorted(set(required) - set(actual)):
         if path in optional:
             continue
+        # An entry main added after the pull request branched is not the
+        # pull request's to carry.
+        if origin is not None and path not in origin and path not in actual:
+            continue
         lines.append(f'+ {path}: required {required[path]}')
     for path in sorted(set(actual) - set(required)):
+        # An entry main dropped after the pull request branched is not the
+        # pull request's to drop.
+        if origin is not None and origin.get(path) == actual[path]:
+            continue
         lines.append(f'- {path}: recorded {actual[path]}')
     for path in sorted(set(required) & set(actual)):
         if required[path] != actual[path]:
             if accepted and accepted.get(path) == actual[path]:
+                continue
+            if origin is not None and origin.get(path) == actual[path]:
                 continue
             lines.append(f'~ {path}: required {required[path]}, recorded {actual[path]}')
     return lines
@@ -235,7 +251,14 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
             return 1
         print(f'{len(measured)} tracked files within the comment-share policy')
         return 0
-    changed = changed_paths(root, base_sha)
+    # The pull request's own change set is the merge-base diff: a pull
+    # request behind main is not failed for paths main moved after the
+    # branch point. Records policy itself stays at base-ref.
+    branch_point = git(root, 'merge-base', base_sha, 'HEAD').stdout.decode().strip()
+    changed = changed_paths(root, branch_point)
+    origin = {path: list(pair)
+              for path, pair in (records_at(root, branch_point, records) or {}).items()
+              if path not in changed}
     head = records_at(root, 'HEAD', records) or {}
     # Unchanged paths the merge skew left unrecorded above the target: the
     # head entry is optional, and when present it must be the measured pair,
@@ -261,7 +284,7 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
                               {path: counts for path, counts in measured.items()
                                if path in changed and path in baseline}, limit))
     failed = False
-    report = records_diff(required, head, optional, accepted)
+    report = records_diff(required, head, optional, accepted, origin)
     if report:
         failed = True
         print('require-tight: the records at HEAD differ from what tighten '
