@@ -249,3 +249,25 @@ def test_unchanged_over_record_file_named_not_failed(tmp_path):
     assert '::notice::' in result.stdout
     assert 'a.py: (45, 105)' in result.stdout
 
+
+def test_changed_over_record_file_takes_the_failure_not_the_notice(tmp_path):
+    # The same over-record state, but the pull request touches the file: it
+    # takes the failure arm (both dimensions against the record), and the
+    # unchanged-file notice stays silent — the base source measures above the
+    # record here, so no substituted limit can mask the notice branch's
+    # unchanged-path conjunct.
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    (origin / 'a.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
+    (origin / 'b.py').write_text('x = 1\n')
+    write_records(origin, {'a.py': [40, 100]})
+    base = commit(origin, 'main holds a file above its record')
+    (origin / 'b.py').write_text('x = 1\ny = 2\n')
+    (origin / 'a.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 59 + '\n')
+    commit(origin, 'a pull request that touches a.py')
+    result = cli(origin, '--base-ref', base)
+    assert result.returncode == 1, result.stderr
+    assert 'a.py: (45, 104) exceeds its record [40, 100]' in result.stderr
+    assert '::notice::' not in result.stdout
+
