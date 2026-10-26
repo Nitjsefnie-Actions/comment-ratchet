@@ -260,15 +260,14 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
               for path, pair in (records_at(root, branch_point, records) or {}).items()
               if path not in changed}
     head = records_at(root, 'HEAD', records) or {}
-    # Unchanged paths the merge skew left unrecorded above the target: the
-    # head entry is optional, and when present it must be the measured pair,
-    # so a records-only pull request can land the named repair.
+    # Unchanged paths left unrecorded above the target by a merge skew: the
+    # head entry is optional, and when present it must be the measured pair.
     optional = {path: list(counts) for path, counts in measured.items()
                 if path not in changed and path not in baseline
                 and above(counts, limit)}
-    # An unchanged recorded path may carry a records-only tightening: fewer
-    # comment bytes at a share not above the record's, by tighten's own
-    # rewrite rule judged on the record the pull request carries.
+    # An unchanged recorded path may carry a records-only tightening:
+    # fewer comment bytes at a share not above the record's, by tighten's
+    # own rewrite rule judged on the record the pull request carries.
     accepted = {path: list(pair) for path, pair in head.items()
                 if path in baseline and path not in changed
                 and pair[0] < baseline[path][0] and not above(pair, baseline[path])}
