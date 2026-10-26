@@ -10,16 +10,20 @@ and `comment_baseline.py`.
 
 ## Install
 
-Save this workflow as `.github/workflows/comment-share.yml`. Change `main` to
-your default branch. The action reference is pinned to the v1.2.1 release
-commit.
+Save this workflow as `.github/workflows/comment-share.yml`. It is the whole
+adoption: save the file, seed the records in the adoption pull request by
+running tighten on the proposed head (the command is under
+[Contributing](CONTRIBUTING.md#tighten-this-repositorys-records)), and no
+other workflow, step, credential or branch edit is needed. The block triggers
+only on `pull_request`, so your default branch's name appears nowhere in the
+file and no push ever starts a run. Consumers' copies are byte-identical
+except the step's `with:` block, if they change it at all. The action
+reference is pinned to the v1.2.1 release commit.
 
 ```yaml
 name: comment share
 on:
   pull_request:
-  push:
-    branches: [main]
 permissions:
   contents: read
 concurrency:
@@ -32,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: Nitjsefnie-Actions/comment-ratchet@8433cde403c63b6494b05f5de4244d0fd2592f4f # v1.2.1
@@ -44,24 +48,30 @@ jobs:
 ```
 
 The `with:` block shows **every input with its default**. Omit it and a bare
-`uses:` step behaves the same on these events. The checkout selects the PR's
-head tree; full history supplies the PR base without retaining a token.
+`uses:` step behaves the same on a pull request. The checkout selects the
+PR's head tree; full history supplies the PR base without retaining a token.
 The action needs a Git checkout, bash, and access to npm and PyPI; it sets up
 Python 3.15.1 and Node 24.17.0 itself. The suite is configured for Ubuntu and
 macOS runners. Windows is outside this action's tested runner set.
 
 `auto` checks on `pull_request` and tightens on a `push` to the repository's
-actual default branch. Other events, including pushes to another branch,
-fail closed and name `mode` and the event. Force `check` or `tighten` for a
-manual workflow. A forced check must supply `base-ref` when the event has no
-PR base SHA.
+actual default branch, though the install block never sees those pushes: it
+triggers only pull requests. Other events, including pushes to another
+branch, fail closed and name `mode` and the event. Force `check` or `tighten`
+for a manual workflow. A forced check must supply `base-ref` when the event
+has no PR base SHA.
 
-Tighten writes the records file into the checkout; it does not commit or push
-it. A consumer's existing ratchet job can commit that result. For initial
-adoption, run tighten on the proposed head and commit the seed in the adoption
-PR. This repository tightens its records on every default-branch push; a
-separate ratchet-push workflow lands the result, as described in
-[CONTRIBUTING.md](CONTRIBUTING.md#tighten-this-repositorys-records).
+**Records are maintained by pull requests.** Tighten writes the records file
+into the checkout only when you run it yourself, to seed or repair records;
+no workflow commits or pushes them. A pull request whose head tree makes
+tighten change the base records — comment bytes fewer at an equal or lower
+share, a deleted file, a file at or under the target — carries that change:
+its check compares the records at HEAD with what tighten would write over the
+changed paths and fails naming each entry and the byte pair it should hold,
+so one pull request can land the repair. If your repository delivers records
+from a push job today, delete that arm; a push workflow that also lands other
+records files keeps those, as this repository's own does for its size
+baseline ([CONTRIBUTING.md](CONTRIBUTING.md#tighten-this-repositorys-records)).
 
 ## Inputs
 
@@ -129,19 +139,23 @@ exact values; `current_comments * recorded_total > recorded_comments *
 current_total` is a rise, even if a rounded percentage would look equal.
 
 **Check** reads the records file at `base-ref` with Git, independent of head
-edits to that file. If the base object is absent locally, it performs a targeted
+edits to that file, and reads the records at HEAD beside them. If the base
+object is absent locally, it performs a targeted
 `git fetch --no-tags origin <base-ref>` in the **consumer checkout**, without
-changing HEAD. Unrecorded files fail above target. For a recorded file changed
-between base-ref and head, the effective limit is its measured
-base-ref pair if that share is equal to or lower than its recorded share;
-otherwise it is the recorded pair. Only changed files are measured at base-ref.
-Unchanged files, files new at base-ref and files that cannot be measured there
-use their recorded pair. A file whose base-ref record is above target passes
-when its head share is at or below target, regardless of its measured base-ref
-pair; this is a verdict rule, not a substituted limit pair. Other recorded
-files fail only when both share and comment bytes exceed the effective limit.
-Equal or lower shares, equal or fewer comment bytes, and deleted files pass.
-Failures name the path and both byte pairs.
+changing HEAD. The head records must hold exactly the entries tighten writes
+over the changed paths from the base records: unchanged files carry their
+recorded pair byte-for-byte; a deleted file's entry is dropped; a changed
+file at or under the target drops its entry; a changed recorded file keeps
+its pair unless tighten lowers it (fewer comment bytes at a share not above
+the record); and a changed file newly above the target records its measured
+pair. Each differing entry fails as a `+`/`~`/`-` diff report naming the
+path and the byte pair it should hold. Unrecorded or over-record files are
+judged only where the pull request changes them: a changed recorded file
+fails when both its share and its comment bytes exceed the effective limit
+below, and a changed file above target with no record fails as a missing
+required entry naming the pair to record. A file the pull request does not
+change is never failed, whatever the merged tree measures — see the two
+repair paths after **Tighten**.
 
 The effective share limit never exceeds the committed record's share. Code
 added on the default branch tightens later pull requests while it stays there.
@@ -167,6 +181,18 @@ Code-only additions, removals or replacements leave the records file
 byte-identical unless a file graduates to or below target, when its entry is
 dropped, or an unrecorded file moves above target, when its entry is added.
 Tighten writes changes for the caller to commit.
+
+**Two repairs a pull request can land.** Two green pull requests can merge
+into a tree tighten would change: one graduates a file and drops its entry
+while another, branched earlier, adds comments within that file's old record,
+and the merge sits above the target with no entry. A pull request that does
+not change that file is never failed for the skew, and the pull request that
+changes the file carries the tightened entry its check names. Separately, a
+file whose merged pair exceeds its tightened record — tighten never raises
+one — gets the second repair: a pull request touching that file must bring
+it back within the effective limit, reducing its comment bytes or its share
+and landing the lowered record in the same pull request when the reduction
+lowers the record.
 
 ## Contributing and security
 

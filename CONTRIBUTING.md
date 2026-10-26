@@ -57,7 +57,8 @@ shellcheck tests/run.sh
 
 The suite ports claudit's measurement fixtures and ratchet boundaries, then
 exercises the CLI against real disposable Git repositories. It covers exact
-seed fallback, base-file authority, lower-only tightening, targeted fetch,
+seed fallback, the require-tight records map over changed paths, base-file
+authority, lower-only tightening, targeted fetch,
 input validation, event dispatch, isolated consumer imports and the aggregate
 verdict. Temporary repositories configure their own test identity; they never
 change this checkout's commit identity. Run suites bare and read their actual
@@ -69,23 +70,26 @@ run its PR workflow. Local subprocess tests do not replace a hosted run.
 
 ## Tighten this repository's records
 
-Records tighten on every default-branch push. After the entire tests gate is
-green on main, its keyless ratchet job runs the local action in tighten mode.
-Only a changed records file stages a ratchet-push artifact, together with the
-measured run's head SHA in base.txt.
+Comment-share records are maintained by pull requests, not by a push chain.
+The push chain lands only the size baseline: after the entire tests gate is
+green on main, its keyless ratchet job runs the size-ratchet action in
+tighten mode, and only a changed size-baseline.json stages a ratchet-push
+artifact, together with the measured run's head SHA in base.txt.
 
 The separate top-level [ratchet-push workflow](.github/workflows/ratchet-push.yml)
-lands the result. It admits only successful main push runs, downloads that
-run's data, and creates a records-only commit with the environment deploy key.
-It checks out no code, installs nothing, and runs no fetched helpers. Configure
-MASTER_PUSH_DEPLOY_KEY in the main-push environment; a missing key fails loudly.
-The bot commit reruns the gate once, and unchanged records stage no artifact,
-so the chain stops there.
-
-When main has moved, the push job merges the single records file three ways.
-Conflicts drop that run with a summary; a push rejected while main stood still
-is an error. A rejection after main moved drops the stale run so the next gate
-can measure again.
+lands that size baseline. It admits only successful main push runs, downloads
+that run's data, and creates a records-only commit with the environment
+deploy key. It checks out no code, installs nothing, and runs no fetched
+helpers. Configure MASTER_PUSH_DEPLOY_KEY in the main-push environment; a
+missing key fails loudly. The bot commit reruns the gate once, and unchanged
+records stage no artifact, so the chain stops there. When main has moved, the
+push job merges the single records file three ways; conflicts drop that run
+with a summary, and a push rejected while main stood still is an error. A
+rejection after main moved drops the stale run so the next gate can measure
+again. Comment-share records ride the pull requests that change the tree
+instead: a pull request whose head tree makes tighten change the base records
+carries that change, and its check names each entry and byte pair when it
+does not.
 
 For initial adoption, generate the exact seed for the proposed head and commit
 it with the PR, because a seedless base uses the head seed under the strict
@@ -96,9 +100,9 @@ COMMENT_RATCHET_MODE=tighten GITHUB_WORKSPACE="$PWD" python3 -I run.py
 git add .github/comment-share.json
 ```
 
-After adoption, head edits never replace the base policy for a check. The
-push workflow lowers existing records and cannot cure a regression by raising
-them.
+After adoption, head edits never replace the base policy for a check, and
+records never rise: a pull request lowers an entry or carries its change, or
+its check fails naming the pair.
 
 ## Python coverage comments
 
