@@ -177,3 +177,33 @@ def test_changed_unrecorded_above_target_fails_until_trimmed(repo):
     write_records(repo, {'x.py': [3, 6]})
     commit(repo, 'pr trims the file below the target')
     assert cli(repo, '--base-ref', base).returncode == 0
+
+
+def test_changed_recorded_file_dropping_its_entry_fails(repo):
+    # A pull request that grows a recorded file still above target and
+    # drops its entry fails naming the required pair: the branch-point
+    # tolerance is for unchanged paths only.
+    source = repo / 'x.py'
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'record policy')
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\nx\n')
+    write_records(repo, {})
+    commit(repo, 'pr grows the file and drops its entry')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert '+ x.py: required [40, 100]' in result.stderr
+
+
+def test_deleted_records_file_cannot_drop_a_changed_entry(repo):
+    # Deleting the records file wholesale does not admit the drop either.
+    source = repo / 'x.py'
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    target = write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'record policy')
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\nx\n')
+    target.unlink()
+    commit(repo, 'pr grows the file and deletes the records')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert '+ x.py: required [40, 100]' in result.stderr
