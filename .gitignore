@@ -40,6 +40,8 @@ tests/*
 !tests/test_ci_comment_baseline.py
 !tests/test_action.py
 !tests/test_ci.py
+!tests/test_require_tight.py
+!tests/test_install_block.py
 !tests/run.sh
 !.github/comment-share.json
 !.github/size-baseline.json
