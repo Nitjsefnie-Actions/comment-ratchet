@@ -72,6 +72,8 @@ so one pull request can land the repair. If your repository delivers records
 from a push job today, delete that arm; a push workflow that also lands other
 records files keeps those, as this repository's own does for its size
 baseline ([CONTRIBUTING.md](CONTRIBUTING.md#tighten-this-repositorys-records)).
+A consumer that wants the check inside a required aggregate keeps its own
+aggregate job and points it at this action, as this repository does.
 
 ## Inputs
 

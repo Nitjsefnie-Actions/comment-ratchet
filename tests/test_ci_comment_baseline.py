@@ -177,6 +177,9 @@ def test_equal_base_share_no_longer_bypasses_the_record(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1, result.stderr
     assert 'x.py: (80, 190) exceeds its record [40, 100]' in result.stderr
+    # A file the pull request changes takes the failure arm, never the
+    # unchanged-file notice beside its failure.
+    assert '::notice::' not in result.stdout
     # Diluting the share below the record's clears the record rule
     # ((80, 210) is 38% <= 40%): the substituted-limit arm still passes it.
     source.write_text('#' + 'c' * 79 + '\n' + 'x' * 130 + '\n')
