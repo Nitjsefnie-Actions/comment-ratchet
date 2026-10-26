@@ -195,6 +195,18 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
         baseline = decode_records(path.read_bytes()) if path.exists() else {}
         measured = comment_share.measure_files(root)
         updated = tightened(baseline, measured, limit)
+        # A recorded file above its record on both dimensions is reported,
+        # never failed and never raised: the loose entry stays until a pull
+        # request's repair lands it (issue 69).
+        for path_name, counts in sorted(measured.items()):
+            record = baseline.get(path_name)
+            if record is not None and above(counts, record) and counts[0] > record[0]:
+                report = (f'{path_name}: {counts} exceeds its record {record}; '
+                          'a pull request touching the file must bring it back '
+                          'within its effective limit (tighten never raises a '
+                          'record)')
+                print(report, file=sys.stderr)
+                print(f'::warning::{report}', file=sys.stdout)
         if updated != baseline or not path.exists():
             write_records(path, updated)
         print(f'{len(updated)} comment-share entries recorded in {records}')
@@ -240,6 +252,15 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
     checked = {path: counts for path, counts in measured.items()
                if path in changed and path in baseline
                and (not above(baseline[path], limit) or above(counts, limit))}
+    # A changed file above its committed record on both dimensions fails
+    # against the record itself, even where the substituted base pair below
+    # would admit it (issue 69: the record binds the PR that grows it).
+    over_record = {path: counts for path, counts in checked.items()
+                   if above(counts, baseline[path]) and counts[0] > baseline[path][0]}
+    for path, counts in sorted(over_record.items()):
+        print(f'{path}: {counts} exceeds its record {baseline[path]}', file=sys.stderr)
+    if over_record:
+        failed = True
     for path, counts in measure_changed_at(root, base_sha,
                                            baseline.keys() & measured.keys()).items():
         if not above(counts, baseline[path]):
@@ -249,6 +270,16 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
         print(f'{path}: {detail}', file=sys.stderr)
     if found:
         failed = True
+    # A file the change does not touch that sits above its record on both
+    # dimensions is named, never failed (issue 69: no wedge, repair in a PR).
+    for path, counts in sorted(measured.items()):
+        if (path in baseline and path not in changed
+                and above(counts, baseline[path]) and counts[0] > baseline[path][0]):
+            notice = (f'{path}: {counts} exceeds its record {baseline[path]}; '
+                      'a pull request touching the file must bring it back within '
+                      'its effective limit (tighten never raises a record)')
+            print(notice, file=sys.stderr)
+            print(f'::notice::{notice}', file=sys.stdout)
     if failed:
         return 1
     print(f'{len(measured)} tracked files within the comment-share policy')
