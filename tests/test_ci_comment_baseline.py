@@ -163,17 +163,25 @@ def test_code_only_graduation_drops_record(repo, code_bytes):
     assert json.loads(records.read_bytes()) == {}
 
 
-def test_equal_base_share_uses_base_comment_bytes(repo):
+def test_equal_base_share_no_longer_bypasses_the_record(repo):
     # # + 79 c = 80 comments; 120 x = 120 code: (80, 200), equal to 40/100.
     source = repo / 'x.py'
     source.write_text('#' + 'c' * 79 + '\n' + 'x' * 120 + '\n')
     write_records(repo, {'x.py': [40, 100]})
     base = commit(repo, 'equal share base')
-    # Same comments, 110 code: (80, 190), above the share but not comment limit.
+    # Same comments, 110 code: (80, 190) sits above the record [40, 100] on
+    # both dimensions (share 42% > 40%, 80 > 40 comments). The substituted
+    # base pair [80, 200] would admit it; the record rule fails it instead.
     source.write_text('#' + 'c' * 79 + '\n' + 'x' * 110 + '\n')
     commit(repo, 'pr removes code')
     result = cli(repo, '--base-ref', base)
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1, result.stderr
+    assert 'x.py: (80, 190) exceeds its record [40, 100]' in result.stderr
+    # Diluting the share below the record's clears the record rule
+    # ((80, 210) is 38% <= 40%): the substituted-limit arm still passes it.
+    source.write_text('#' + 'c' * 79 + '\n' + 'x' * 130 + '\n')
+    commit(repo, 'dilute below the record share')
+    assert cli(repo, '--base-ref', base).returncode == 0
 
 
 @pytest.mark.parametrize('recorded_comments', [10, 15])
@@ -413,6 +421,27 @@ def test_tighten_adds_new_records_without_raising_existing(repo):
     assert result.returncode == 0, result.stderr
     assert json.loads((repo / '.github/comment-share.json').read_bytes()) == {
         'x.py': [2, 6], 'new.sh': [4, 4]}
+
+
+def test_tighten_reports_over_record_files_without_failing(repo):
+    # Head (45, 105) sits above the record [40, 100] on both dimensions
+    # (share 42.9% > 40%, and 45 > 40 comments). Tighten reports it — in the
+    # log and as a ::warning:: annotation, with the documented repair path —
+    # but neither fails nor raises: the loose record stays byte-identical.
+    source = repo / 'x.py'
+    source.write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
+    records = write_records(repo, {'x.py': [40, 100]})
+    commit(repo, 'record policy')
+    before = records.read_bytes()
+    result = cli(repo, '--mode', 'tighten')
+    assert result.returncode == 0, result.stderr
+    assert 'x.py: (45, 105) exceeds its record [40, 100]' in result.stderr
+    assert 'tighten never raises a record' in result.stderr
+    assert '::warning::' in result.stdout
+    assert 'x.py: (45, 105)' in result.stdout
+    assert records.read_bytes() == before
+    assert cli(repo, '--mode', 'tighten').returncode == 0
+    assert records.read_bytes() == before
 
 
 @pytest.mark.parametrize('suffix,source,want', [
