@@ -2,32 +2,29 @@ name: ratchet push
 
 # The data-only push half of the size ratchet. The gate executes proposed
 # code and stays keyless. The push lives HERE, a top-level workflow where
-# environment: main-push resolves, keyed on the tests run's completion.
-# Comment-share records are not delivered this way: pull requests carry
-# them (the README install block's check names each entry and pair), so a
-# records change never needs a default-branch commit.
+# environment: main-push resolves, keyed on the tests run's completion;
+# comment-share records ride pull requests now, never this chain.
 #
-# tests.yml stages ratchet-push only after its aggregate is green on main.
-# This workflow lists that triggering run's artifacts, downloads the size
-# baseline when present, and pushes a records-only commit when it changed.
+# tests.yml stages ratchet-push only after its aggregate is green on
+# main. This workflow lists that run's artifacts, downloads the size
+# baseline when present, and pushes a records-only commit on a change.
 #
 # THE GATE PROTECTS THE PUSH TWICE: only a fully green main gate stages data,
 # and only a completed successful push run reaches this job. No code is
 # checked out, no fetched helper executes, and nothing is installed. Git
-# plumbing materializes just the records file and builds the new tree from
-# the fetched index. The environment deploy key exists only in the push step,
-# whose ssh-agent is stopped when the step ends.
+# plumbing materializes just the records blob onto the fetched index. The
+# environment deploy key exists only in the push step, whose ssh-agent is
+# stopped when the step ends.
 #
-# Main movement is checked at the merge and again at the push. Any path
+# Main movement is checked at the merge and again at the push: any path
 # other than the size baseline differing between the measured base and
-# fetched main drops the run; a records-only move merges three ways, and
-# a conflict drops it. A push rejected while main stood still is an error,
-# while rejection after main moved drops this run's data so the next main
+# fetched main drops the run, a records-only move merges three ways, a
+# conflict drops it, a push rejected while main stood still is an error,
+# and rejection after main moved drops this run's data so the next main
 # run can measure again.
 #
-# The records commit starts the gate once more. JSON records are not measured
-# source, so tightening again leaves them unchanged. tests.yml stages nothing
-# on that no-change path: there is no artifact and no second push.
+# The records commit reruns the gate once; unchanged records stage no
+# artifact, so the chain stops.
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers]
     # tests.yml's name, the run carrying the artifact on a main push. The
