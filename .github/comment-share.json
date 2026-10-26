@@ -42,17 +42,5 @@
   "tests/run.sh": [
     18,
     79
-  ],
-  "tests/test_install_block.py": [
-    532,
-    2957
-  ],
-  "tests/test_merge_repair.py": [
-    2639,
-    10097
-  ],
-  "tests/test_require_tight.py": [
-    959,
-    5503
   ]
 }
