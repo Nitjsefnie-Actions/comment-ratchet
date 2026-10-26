@@ -144,24 +144,31 @@ current_total` is a rise, even if a rounded percentage would look equal.
 edits to that file, and reads the records at HEAD beside them. If the base
 object is absent locally, it performs a targeted
 `git fetch --no-tags origin <base-ref>` in the **consumer checkout**, without
-changing HEAD. The head records must hold exactly the entries tighten writes
-over the changed paths from the base records: unchanged files carry their
-recorded pair byte-for-byte; a deleted file's entry is dropped; a changed
-file at or under the target drops its entry; a changed recorded file keeps
-its pair unless tighten lowers it (fewer comment bytes at a share not above
-the record); and a changed file newly above the target records its measured
-pair. Each differing entry fails as a `+`/`~`/`-` diff report naming the
-path and the byte pair it should hold. Unrecorded or over-record files are
-judged only where the pull request changes them: a changed recorded file
-fails when it exceeds the effective limit below on both dimensions, or when
-it exceeds its committed record on both dimensions; and a changed file above
-target with no record fails as a missing required entry naming the pair to
-record. A file the pull request does not change is never failed, whatever
-the merged tree measures: one that sits above its record on both dimensions
-is named, with both pairs and the repair path, as a notice — see the two
-repair paths after **Tighten**. The judgment reads the committed
-`base-ref`..`HEAD` diff only: an edit that exists just in an uncommitted
-working tree is not part of any pull request and is not judged.
+changing HEAD. The pull request's changed set is the merge-base diff
+(`git merge-base base-ref HEAD`), so a pull request behind main is not
+judged on paths main moved after the branch point; records policy itself
+stays at `base-ref`. The head records must hold exactly the entries tighten
+writes over the changed paths from the base records: unchanged files carry
+their recorded pair byte-for-byte; a deleted file's entry is dropped; a
+changed file at or under the target drops its entry; and a changed recorded
+file keeps its pair unless tighten lowers it (fewer comment bytes at a share
+not above the record). Each differing entry fails as a `+`/`~`/`-` diff
+report naming the path and the byte pair it should hold. Unrecorded or
+over-record files are judged only where the pull request changes them: a
+changed recorded file fails when it exceeds the effective limit below on
+both dimensions, or when it exceeds its committed record on both dimensions;
+and a changed file above the target with no record fails naming its pair —
+the repair is trimming the file, never recording it. A file the pull request
+does not change is never failed, whatever the merged tree measures: one that
+sits above its record on both dimensions is named, with both pairs and the
+repair path, as a notice, and one left above the target with no entry by a
+merge skew is named with the exact entry a records-only pull request may
+land. For an unchanged path the head record must be the base pair, a
+tighten-lowering of it, or what the branch point held; a raising or
+loosening records-only edit fails naming the base pair. See the two repair
+paths after **Tighten**. The judgment reads the committed `base-ref`..`HEAD`
+diff only: an edit that exists just in an uncommitted working tree is not
+part of any pull request and is not judged.
 
 The effective share limit never exceeds the committed record's share. Code
 added on the default branch tightens later pull requests while it stays there.
