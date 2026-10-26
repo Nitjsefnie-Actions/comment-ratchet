@@ -41,6 +41,7 @@ tests/*
 !tests/test_action.py
 !tests/test_ci.py
 !tests/test_require_tight.py
+!tests/test_merge_repair.py
 !tests/test_install_block.py
 !tests/run.sh
 !.github/comment-share.json
