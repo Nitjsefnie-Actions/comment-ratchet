@@ -283,7 +283,11 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
                               {path: counts for path, counts in measured.items()
                                if path in changed and path in baseline}, limit))
     failed = False
-    report = records_diff(required, head, optional, accepted, origin)
+    # The branch-point tolerance is for unchanged paths only: a changed
+    # path's required entry is always reported missing.
+    report = records_diff(required, head, optional, accepted,
+                          {**origin, **{path: required[path] for path in changed
+                                        if path in required}})
     if report:
         failed = True
         print('require-tight: the records at HEAD differ from what tighten '
