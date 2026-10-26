@@ -36,9 +36,8 @@ def skewed_repo(tmp_path, shrink, add):
     return origin
 
 def test_out_of_date_merge_does_not_wedge_untouched_files(tmp_path):
-    # brA graduates a.py; brB (branched earlier) adds comments within the old
-    # record: the merge sits above target with no entry, and an untouched PR
-    # passes.
+    # brA graduates a.py; brB adds comments within the old record: the
+    # merge sits above target with no entry, and an untouched PR passes.
     def shrink(origin):
         source = origin / 'a.py'
         source.write_text('#' + 'c' * 14 + '\n' + 'x' * 60 + '\n' + 'x' * 25 + '\n')  # (15, 100): at target, graduates
@@ -67,8 +66,8 @@ def test_touching_the_skewed_file_names_the_entry_to_carry(tmp_path):
             handle.write('#' + 'c' * 3 + '\n' + 'x' * 13 + '\n')
 
     origin = skewed_repo(tmp_path, shrink, add)
-    # A pull request touching the skewed file is judged against the target:
-    # the repair is trimming, never recording.
+    # A PR touching the skewed file is judged against the target: the
+    # repair is trimming, never recording.
     with (origin / 'a.py').open('a') as handle:
         handle.write('x\n')
     commit(origin, 'a pull request that touches a.py')
@@ -76,7 +75,7 @@ def test_touching_the_skewed_file_names_the_entry_to_carry(tmp_path):
     assert result.returncode == 1
     assert ('a.py: (19, 118) exceeds the target (15, 100); trim the file, '
             'never record it') in result.stderr
-    # The same pull request trims the file below the target and passes.
+    # The same PR trims the file below the target and passes.
     (origin / 'a.py').write_text('#' + 'c' * 13 + '\n' + 'x' * 85 + '\n')
     commit(origin, 'trim the file below the target')
     # The PR base is the skew-holding merge, one commit back.
@@ -85,8 +84,7 @@ def test_touching_the_skewed_file_names_the_entry_to_carry(tmp_path):
 
 def test_merged_pair_exceeding_the_record_fails_touching_prs(tmp_path):
     # brA raises the share with no new comments; brB adds comments at an
-    # equal share: both pass, and the merge exceeds the record tighten cannot
-    # raise.
+    # equal share: both pass; the merge exceeds the record tighten cannot raise.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -115,7 +113,7 @@ def test_merged_pair_exceeding_the_record_fails_touching_prs(tmp_path):
     assert second.returncode == 0, second.stderr
     git(origin, 'checkout', '-q', 'main')
     git(origin, 'merge', '--no-edit', '-q', 'brB')
-    # Merge (44, 106): above the record share, so the limit stays [40, 110].
+    # Merge (44, 106): above the record share, so the limit is [40, 110].
     source = origin / 'a.py'
     base = git(origin, 'rev-parse', 'HEAD')
     (origin / 'b.py').write_text('x = 1\ny = 2\n')
@@ -129,7 +127,7 @@ def test_merged_pair_exceeding_the_record_fails_touching_prs(tmp_path):
     assert result.returncode == 1
     assert 'a.py: (44, 107) exceeds [40, 110]' in result.stderr
     git(origin, 'reset', '-q', '--hard', base)
-    # (38, 130): fewer comments at a lower share lowers and lands the record.
+    # (38, 130): fewer comments at a lower share lands the lowered record.
     source.write_text('#' + 'c' * 37 + '\n' + 'x' * 92 + '\n')
     commit(origin, 'reduce')
     result = cli(origin, '--base-ref', base)
@@ -157,9 +155,8 @@ def test_deleted_recorded_file_drops_its_entry(tmp_path):
     assert cli(origin, '--base-ref', base).returncode == 0
 
 def test_new_above_target_file_fails_until_trimmed(tmp_path):
-    # A file the pull request adds above the target is judged against the
-    # target, not admitted by carrying its own record (v1's rule): the
-    # repair is trimming the file, never recording it.
+    # Judged against the target, not admitted by carrying its own record:
+    # the repair is trimming, never recording.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -199,9 +196,8 @@ def test_records_diff_and_violation_print_in_one_run(repo):
 
 
 def test_renamed_recorded_file_moves_its_entry(tmp_path):
-    # --no-renames judges a rename delete+add, so the old entry drops and the
-    # new path is required; rename detection would carry the old entry
-    # forever.
+    # --no-renames judges a rename delete+add: the old entry drops instead
+    # of riding on under the new name.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -216,16 +212,16 @@ def test_renamed_recorded_file_moves_its_entry(tmp_path):
     assert '- a.py: recorded [40, 100]' in result.stderr
     assert ('renamed.py: (40, 100) exceeds the target (15, 100); trim the '
             'file, never record it') in result.stderr
-    # The rename survives by trimming below the target and dropping the old
-    # entry in the same pull request.
+    # The rename survives by trimming below the target and dropping the
+    # entry.
     (origin / 'renamed.py').write_text('x' * 60 + '\n')
     write_records(origin, {})
     commit(origin, 'trim the renamed file and drop the entry')
     assert cli(origin, '--base-ref', base).returncode == 0
 
 def test_unchanged_over_record_file_named_not_failed(tmp_path):
-    # Issue 69: a grown file every gate let past; an untouched pull request
-    # passes with the notice.
+    # A grown file every gate let past; an untouched pull request passes
+    # with the notice.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -264,11 +260,9 @@ def test_changed_over_record_file_takes_the_failure_not_the_notice(tmp_path):
 
 
 def test_skew_named_in_an_untouched_pr_and_repaired_by_records_only(tmp_path):
-    # brA graduates a.py (entry dropped) while brB, branched earlier, adds
-    # comments within the old record: the merge holds a.py (19, 117) above
-    # the target with no entry. An untouched pull request passes AND names
-    # the exact entry to add, so a records-only pull request lands the
-    # repair; a looser records-only edit fails naming the required pair.
+    # The merge holds a.py (19, 117) above target with no entry: an
+    # untouched PR passes AND names the entry to add, which a records-only
+    # PR lands; a looser records-only edit fails naming the required pair.
     def shrink(origin):
         source = origin / 'a.py'
         source.write_text('#' + 'c' * 14 + '\n' + 'x' * 60 + '\n' + 'x' * 25 + '\n')
@@ -287,7 +281,7 @@ def test_skew_named_in_an_untouched_pr_and_repaired_by_records_only(tmp_path):
     assert 'a.py: (19, 117) exceeds the target (15, 100)' in result.stderr
     assert 'may land the entry [19, 117]' in result.stderr
     assert '::notice::' in result.stdout
-    # A records-only pull request landing exactly the named entry passes.
+    # A records-only PR landing exactly the named entry passes.
     write_records(origin, {'a.py': [19, 117]})
     commit(origin, 'a records-only pull request lands the named entry')
     assert cli(origin, '--base-ref', skew).returncode == 0
@@ -300,9 +294,8 @@ def test_skew_named_in_an_untouched_pr_and_repaired_by_records_only(tmp_path):
 
 
 def test_records_only_lowering_of_an_untouched_file_passes(tmp_path):
-    # A records-only pull request may lower an untouched file's record
-    # (fewer comment bytes at a share not above the record's), as in v1; a
-    # raising records-only edit fails naming the base pair.
+    # A records-only PR may lower an untouched record (fewer comment bytes
+    # at a share not above it), as in v1; a raising edit fails.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -321,9 +314,8 @@ def test_records_only_lowering_of_an_untouched_file_passes(tmp_path):
 
 
 def test_every_untouched_over_record_entry_is_named(tmp_path):
-    # Both notice kinds at once, untouched by the pull request: a recorded
-    # file above its record, and a merge-skew file with no entry. Every
-    # entry is named with its pairs and the repair pointer.
+    # Both notice kinds at once, untouched: over-record, and missing-entry
+    # skew. Every entry is named with its pairs.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -343,9 +335,8 @@ def test_every_untouched_over_record_entry_is_named(tmp_path):
 
 
 def test_stale_pr_judged_against_the_merge_base(tmp_path):
-    # Main moves f.py after the branch point (halved at an equal share, its
-    # record lowered): a stale pull request touching only b.py is judged on
-    # its own merge-base diff and passes, never on files main moved.
+    # Main moves f.py after the branch point: a stale PR touching only
+    # b.py is judged on its merge-base diff and passes.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -369,7 +360,6 @@ def test_stale_pr_judged_against_the_merge_base(tmp_path):
     assert '~ f.py' not in result.stderr
     assert '- f.py' not in result.stderr
     assert '+ f.py' not in result.stderr
-    # A pull request that itself moves f.py is still judged from the tip.
     (origin / 'f.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
     write_records(origin, {'f.py': [44, 105]})
     commit(origin, 'the pull request also moves f.py')
