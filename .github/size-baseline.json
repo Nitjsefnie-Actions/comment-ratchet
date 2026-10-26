@@ -2,8 +2,7 @@
   "schema_version": 1,
   "baseline": {
     "scripts/ci/comment_share.py": 602,
-    "tests/test_ci.py": 582,
-    "tests/test_ci_comment_baseline.py": 540,
+    "tests/test_ci.py": 560,
     "tests/test_ci_comment_share.py": 561
   }
 }
