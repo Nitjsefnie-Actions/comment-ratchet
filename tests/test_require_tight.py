@@ -35,6 +35,7 @@ def test_default_branch_code_growth_sets_pr_limit(repo, comments, code, want):
     if want:
         assert 'x.py: (45, 220) exceeds [40, 200]' in result.stderr
 
+
 def test_head_below_recorded_comments_carries_the_lowered_record(repo):
     source = repo / 'x.py'
     # 40 comments (# + 39 c) + 60 code (x) = (40, 100); the default branch
@@ -92,6 +93,7 @@ def test_empty_base_has_zero_share_limit(repo, source, line):
     assert result.returncode == 1, result.stderr
     assert line in result.stderr
 
+
 def test_graduated_head_below_target_requires_the_record_drop(repo):
     (repo / 'x.py').write_text(' \t\n')
     write_records(repo, {'x.py': [40, 100]})
@@ -103,6 +105,7 @@ def test_graduated_head_below_target_requires_the_record_drop(repo):
     commit(repo, 'carry the graduation')
     assert cli(repo, '--base-ref', base).returncode == 0
 
+
 def test_existing_base_records_bind_even_when_head_is_looser(repo):
     write_records(repo, {'x.py': [2, 6]})
     base = commit(repo, 'base policy')
@@ -112,6 +115,7 @@ def test_existing_base_records_bind_even_when_head_is_looser(repo):
     assert result.returncode == 1
     assert '~ x.py: required [2, 6], recorded [6, 6]' in result.stderr
 
+
 def test_head_records_deleted_or_invalid_cannot_dodge_the_required_map(repo):
     target = write_records(repo, {'x.py': [3, 6]})
     base = commit(repo, 'base policy')
@@ -119,12 +123,13 @@ def test_head_records_deleted_or_invalid_cannot_dodge_the_required_map(repo):
     commit(repo, 'head records deleted')
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
-    assert '+ x.py: record [3, 6]' in result.stderr
+    assert '+ x.py: required [3, 6]' in result.stderr
     target.write_text('{bad json')
     commit(repo, 'head records invalid')
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert 'records' in result.stderr
+
 
 def test_head_records_absent_when_nothing_is_required_passes(repo):
     # The base holds one entry for a file this change deletes; tightening the
@@ -139,6 +144,7 @@ def test_head_records_absent_when_nothing_is_required_passes(repo):
     commit(repo, 'pr deletes the only recorded file')
     assert cli(repo, '--base-ref', base).returncode == 0
 
+
 def test_all_offending_files_are_named_with_numbers(repo):
     write_records(repo, {'x.py': [2, 6]})
     base = commit(repo, 'base policy')
@@ -148,7 +154,8 @@ def test_all_offending_files_are_named_with_numbers(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert '~ x.py: required [2, 6], recorded [3, 6]' in result.stderr
-    assert '+ new.sh: record [4, 4]' in result.stderr
+    assert '+ new.sh: required [4, 4]' in result.stderr
+
 
 # The skew sequence of issue 68 item 3: two green branches can merge into a
 # tree tighten would change, and the require-tight check repairs it in pull
@@ -159,27 +166,31 @@ def skewed_repo(tmp_path, shrink, add):
     origin.mkdir()
     init_repo(origin)
     source = origin / 'a.py'
-    # a.py: 40 comments (# + 39 c) + 60 code (x) = (40, 100).
-    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    # a.py: 40 comments + 85 code = (40, 125); line 3 keeps the branches'
+    # edits apart so the merge is clean.
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n' + 'x' * 25 + '\n')
     (origin / 'b.py').write_text('x = 1\n')
-    write_records(origin, {'a.py': [40, 100]})
+    write_records(origin, {'a.py': [40, 125]})
     commit(origin, 'base')
     git(origin, 'branch', '-M', 'main')
+    # Each branch commits its change before its check, so the two green
+    # asserts judge the branches' own diffs, not the untouched parent.
     git(origin, 'checkout', '-q', '-b', 'brA')
     shrink(origin)
+    commit(origin, 'branch a')
     first = cli(origin, '--base-ref', git(origin, 'rev-parse', 'main'))
     assert first.returncode == 0, first.stderr
-    commit(origin, 'branch a')
     git(origin, 'checkout', '-q', 'main')
     git(origin, 'merge', '--no-edit', '-q', 'brA')
     git(origin, 'checkout', '-q', '-b', 'brB', 'main~1')
     add(origin)
+    commit(origin, 'branch b')
     second = cli(origin, '--base-ref', git(origin, 'rev-parse', 'main~1'))
     assert second.returncode == 0, second.stderr
-    commit(origin, 'branch b')
     git(origin, 'checkout', '-q', 'main')
     git(origin, 'merge', '--no-edit', '-q', 'brB')
     return origin
+
 
 def test_out_of_date_merge_does_not_wedge_untouched_files(tmp_path):
     # brA graduates a.py and drops its entry while brB, branched earlier,
@@ -187,30 +198,31 @@ def test_out_of_date_merge_does_not_wedge_untouched_files(tmp_path):
     # with no entry. A pull request that does not touch a.py passes.
     def shrink(origin):
         source = origin / 'a.py'
-        source.write_text('#' + 'c' * 14 + '\n' + 'x' * 60 + '\n')
+        source.write_text('#' + 'c' * 14 + '\n' + 'x' * 60 + '\n' + 'x' * 25 + '\n')  # (15, 100): at the target, so it graduates
         write_records(origin, {})
 
     def add(origin):
         with (origin / 'a.py').open('a') as handle:
-            handle.write('#' + 'c' * 4 + '\n' + 'x' * 10 + '\n')
+            handle.write('#' + 'c' * 3 + '\n' + 'x' * 13 + '\n')
 
     origin = skewed_repo(tmp_path, shrink, add)
-    # The merge itself holds the skew: (20, 90) above target, no entry.
+    # The merge itself holds the skew: (19, 117) above target, no entry.
     assert json.loads((origin / '.github/comment-share.json').read_text()) == {}
     (origin / 'b.py').write_text('x = 1\ny = 2\n')
     commit(origin, 'a pull request that does not touch a.py')
     result = cli(origin, '--base-ref', git(origin, 'rev-parse', 'HEAD~1'))
     assert result.returncode == 0, result.stderr
 
+
 def test_touching_the_skewed_file_names_the_entry_to_carry(tmp_path):
     def shrink(origin):
         source = origin / 'a.py'
-        source.write_text('#' + 'c' * 14 + '\n' + 'x' * 60 + '\n')
+        source.write_text('#' + 'c' * 14 + '\n' + 'x' * 60 + '\n' + 'x' * 25 + '\n')  # (15, 100): at the target, so it graduates
         write_records(origin, {})
 
     def add(origin):
         with (origin / 'a.py').open('a') as handle:
-            handle.write('#' + 'c' * 4 + '\n' + 'x' * 10 + '\n')
+            handle.write('#' + 'c' * 3 + '\n' + 'x' * 13 + '\n')
 
     origin = skewed_repo(tmp_path, shrink, add)
     # A pull request touching a.py must carry the entry tighten would add.
@@ -219,14 +231,15 @@ def test_touching_the_skewed_file_names_the_entry_to_carry(tmp_path):
     commit(origin, 'a pull request that touches a.py')
     result = cli(origin, '--base-ref', git(origin, 'rev-parse', 'HEAD~1'))
     assert result.returncode == 1
-    assert '+ a.py: record [20, 91]' in result.stderr
+    assert '+ a.py: required [19, 118]' in result.stderr
     assert 'exceeds' not in result.stderr
-    write_records(origin, {'a.py': [20, 91]})
+    write_records(origin, {'a.py': [19, 118]})
     commit(origin, 'carry the entry')
     # The pull request base is the merge that holds the skew, one commit
     # before the touching commit.
     assert cli(origin, '--base-ref', git(origin, 'rev-parse',
                                          'HEAD~2')).returncode == 0
+
 
 def test_merged_pair_exceeding_the_record_fails_touching_prs(tmp_path):
     # brA removes code (raising the share without new comments) and brB adds
@@ -250,18 +263,18 @@ def test_merged_pair_exceeding_the_record_fails_touching_prs(tmp_path):
     # 60 -> 40 code on line 2: (40, 90), a raised share with no new comments,
     # so no violation and nothing to carry.
     source.write_text('#' + 'c' * 39 + '\n' + 'x' * 40 + '\n' + 'x' * 10 + '\n')
+    commit(origin, 'branch a')
     first = cli(origin, '--base-ref', base0)
     assert first.returncode == 0, first.stderr
-    commit(origin, 'branch a')
     git(origin, 'checkout', '-q', 'main')
     git(origin, 'merge', '--no-edit', '-q', 'brA')
     git(origin, 'checkout', '-q', '-b', 'brB', base0)
     # The appended (4, 12) keeps brB's share at or below the base's.
     with source.open('a') as handle:
         handle.write('#' + 'c' * 3 + '\n' + 'x' * 12 + '\n')
+    commit(origin, 'branch b')
     second = cli(origin, '--base-ref', base0)
     assert second.returncode == 0, second.stderr
-    commit(origin, 'branch b')
     git(origin, 'checkout', '-q', 'main')
     git(origin, 'merge', '--no-edit', '-q', 'brB')
     # The merge: 44 comments, 40 + 10 + 12 code = (44, 106), above the
@@ -292,6 +305,7 @@ def test_merged_pair_exceeding_the_record_fails_touching_prs(tmp_path):
     commit(origin, 'land the lowered record')
     assert cli(origin, '--base-ref', base).returncode == 0
 
+
 def test_deleted_recorded_file_drops_its_entry(tmp_path):
     origin = tmp_path / 'origin'
     origin.mkdir()
@@ -309,6 +323,7 @@ def test_deleted_recorded_file_drops_its_entry(tmp_path):
     commit(origin, 'carry the drop')
     assert cli(origin, '--base-ref', base).returncode == 0
 
+
 def test_new_above_target_file_adds_its_measured_pair(tmp_path):
     origin = tmp_path / 'origin'
     origin.mkdir()
@@ -320,10 +335,11 @@ def test_new_above_target_file_adds_its_measured_pair(tmp_path):
     commit(origin, 'pr adds a file above target')
     result = cli(origin, '--base-ref', base)
     assert result.returncode == 1
-    assert '+ new.sh: record [4, 4]' in result.stderr
+    assert '+ new.sh: required [4, 4]' in result.stderr
     write_records(origin, {'x.py': [3, 6], 'new.sh': [4, 4]})
     commit(origin, 'carry the new entry')
     assert cli(origin, '--base-ref', base).returncode == 0
+
 
 def test_records_diff_and_violation_print_in_one_run(repo):
     source = repo / 'x.py'
@@ -340,3 +356,26 @@ def test_records_diff_and_violation_print_in_one_run(repo):
     assert '~ x.py: required [40, 100], recorded [3, 6]' in result.stderr
     assert 'x.py: (45, 220) exceeds [40, 200]' in result.stderr
 
+
+
+def test_renamed_recorded_file_moves_its_entry(tmp_path):
+    # A rename is judged as delete+add (--no-renames in changed_paths), so a
+    # renamed recorded file must move its entry: the check names the old
+    # entry's drop and the new path's required pair. Rename detection would
+    # list only the new path and carry the old entry forever.
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    (origin / 'a.py').write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    (origin / 'b.py').write_text('x = 1\n')
+    write_records(origin, {'a.py': [40, 100]})
+    base = commit(origin, 'base')
+    git(origin, 'mv', 'a.py', 'renamed.py')
+    commit(origin, 'pr renames a recorded file')
+    result = cli(origin, '--base-ref', base)
+    assert result.returncode == 1
+    assert '- a.py: recorded [40, 100]' in result.stderr
+    assert '+ renamed.py: required [40, 100]' in result.stderr
+    write_records(origin, {'renamed.py': [40, 100]})
+    commit(origin, 'carry the moved entry')
+    assert cli(origin, '--base-ref', base).returncode == 0

@@ -143,7 +143,7 @@ def changed_paths(root: Path, sha: str) -> set[str]:
 def records_diff(required: dict[str, list[int]], actual: dict[str, list[int]]) -> list[str]:
     lines = []
     for path in sorted(set(required) - set(actual)):
-        lines.append(f'+ {path}: record {required[path]}')
+        lines.append(f'+ {path}: required {required[path]}')
     for path in sorted(set(actual) - set(required)):
         lines.append(f'- {path}: recorded {actual[path]}')
     for path in sorted(set(required) & set(actual)):
