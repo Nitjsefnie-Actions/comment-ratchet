@@ -135,6 +135,23 @@ def records_at(root: Path, revision: str, records: str) -> dict[str, list[int]] 
     return decode_records(result.stdout)
 
 
+def changed_paths(root: Path, sha: str) -> set[str]:
+    listed = git(root, 'diff', '--no-renames', '--name-only', '-z', sha, 'HEAD', '--')
+    return {path for path in listed.stdout.decode('utf-8').split('\0') if path}
+
+
+def records_diff(required: dict[str, list[int]], actual: dict[str, list[int]]) -> list[str]:
+    lines = []
+    for path in sorted(set(required) - set(actual)):
+        lines.append(f'+ {path}: record {required[path]}')
+    for path in sorted(set(actual) - set(required)):
+        lines.append(f'- {path}: recorded {actual[path]}')
+    for path in sorted(set(required) & set(actual)):
+        if required[path] != actual[path]:
+            lines.append(f'~ {path}: required {required[path]}, recorded {actual[path]}')
+    return lines
+
+
 def measure_changed_at(root: Path, sha: str, paths: set[str]) -> dict[str, tuple[int, int]]:
     changed = git(root, 'diff', '--no-renames', '--name-only', '-z', sha, 'HEAD', '--')
     paths = paths.intersection(changed.stdout.decode('utf-8').split('\0'))
@@ -185,7 +202,6 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
     base_sha = resolve_ref(root, base_ref)
     baseline = records_at(root, base_sha, records)
     measured = comment_share.measure_files(root)
-    checked = measured
     if baseline is None:
         head = records_at(root, 'HEAD', records)
         if head is None:
@@ -199,18 +215,41 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
                   f'tighten seed {expected.get(path)}', file=sys.stderr)
         if differing:
             return 1
-        baseline = head
-    else:
-        checked = {path: counts for path, counts in measured.items()
-                   if path not in baseline or not above(baseline[path], limit)
-                   or above(counts, limit)}
-        for path, counts in measure_changed_at(root, base_sha, baseline.keys() & measured.keys()).items():
-            if not above(counts, baseline[path]):
-                baseline[path] = list(counts)
+        print(f'{len(measured)} tracked files within the comment-share policy')
+        return 0
+    changed = changed_paths(root, base_sha)
+    head = records_at(root, 'HEAD', records) or {}
+    # The records at HEAD must already be what tighten writes over this tree
+    # from the base records, so one pull request lands the records change.
+    required = {path: list(pair) for path, pair in baseline.items()
+                if path not in changed}
+    required.update(tightened({path: pair for path, pair in baseline.items()
+                               if path in changed},
+                              {path: counts for path, counts in measured.items()
+                               if path in changed}, limit))
+    failed = False
+    report = records_diff(required, head)
+    if report:
+        failed = True
+        print('require-tight: the records at HEAD differ from what tighten '
+              'writes over this tree from the base records:', file=sys.stderr)
+        for line in report:
+            print(line, file=sys.stderr)
+    # Measurement judges only files this change touches: a file the change
+    # does not alter is never failed for a tree that moved under it.
+    checked = {path: counts for path, counts in measured.items()
+               if path in changed and path in baseline
+               and (not above(baseline[path], limit) or above(counts, limit))}
+    for path, counts in measure_changed_at(root, base_sha,
+                                           baseline.keys() & measured.keys()).items():
+        if not above(counts, baseline[path]):
+            baseline[path] = list(counts)
     found = violations(checked, baseline, limit)
     for path, detail in sorted(found.items()):
         print(f'{path}: {detail}', file=sys.stderr)
     if found:
+        failed = True
+    if failed:
         return 1
     print(f'{len(measured)} tracked files within the comment-share policy')
     return 0
