@@ -247,7 +247,7 @@ jobs:
     # Staging is keyless and follows the whole gate, not just one matrix cell.
     # A records-only push runs this once more, but the no-change stage below
     # emits no artifact and terminates the push chain. Comment-share records
-    # are not staged: pull requests carry them (see README, Install).
+    # stage nothing; pull requests carry them.
     needs: aggregate
     if: >-
       success() && needs.aggregate.result == 'success' &&
