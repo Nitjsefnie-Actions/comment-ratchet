@@ -18,7 +18,7 @@ other workflow, step, credential or branch edit is needed. The block triggers
 only on `pull_request`, so your default branch's name appears nowhere in the
 file and no push ever starts a run. Consumers' copies are byte-identical
 except the step's `with:` block, if they change it at all. The action
-reference is pinned to the v1.2.1 release commit.
+reference is pinned to the v2.0.0 release commit.
 
 ```yaml
 name: comment share
@@ -39,7 +39,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: Nitjsefnie-Actions/comment-ratchet@8433cde403c63b6494b05f5de4244d0fd2592f4f # v1.2.1
+      - uses: Nitjsefnie-Actions/comment-ratchet@498089daff4cf97eb5f1b0bd78680e6aad9684a8 # v2.0.0
         with:
           target: '15'
           records: '.github/comment-share.json'
