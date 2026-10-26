@@ -151,10 +151,12 @@ the record); and a changed file newly above the target records its measured
 pair. Each differing entry fails as a `+`/`~`/`-` diff report naming the
 path and the byte pair it should hold. Unrecorded or over-record files are
 judged only where the pull request changes them: a changed recorded file
-fails when both its share and its comment bytes exceed the effective limit
-below, and a changed file above target with no record fails as a missing
-required entry naming the pair to record. A file the pull request does not
-change is never failed, whatever the merged tree measures — see the two
+fails when it exceeds the effective limit below on both dimensions, or when
+it exceeds its committed record on both dimensions; and a changed file above
+target with no record fails as a missing required entry naming the pair to
+record. A file the pull request does not change is never failed, whatever
+the merged tree measures: one that sits above its record on both dimensions
+is named, with both pairs and the repair path, as a notice — see the two
 repair paths after **Tighten**. The judgment reads the committed
 `base-ref`..`HEAD` diff only: an edit that exists just in an uncommitted
 working tree is not part of any pull request and is not judged.
@@ -183,6 +185,15 @@ Code-only additions, removals or replacements leave the records file
 byte-identical unless a file graduates to or below target, when its entry is
 dropped, or an unrecorded file moves above target, when its entry is added.
 Tighten writes changes for the caller to commit.
+
+**Tighten reports, it never fails and never raises.** A recorded file sitting
+above its record on both dimensions — comment bytes and share — is printed to
+the log and emitted as a `::warning::` annotation, naming the file, the
+measured pair and the record pair, and pointing at the same repair path: a
+pull request touching the file must bring it back within the effective limit,
+because tighten never raises a record. The run's exit status and write
+behavior are unchanged by these reports, so a default-branch push stays green
+while a loose record waits for a pull request to repair it.
 
 **Two repairs a pull request can land.** Two green pull requests can merge
 into a tree tighten would change: one graduates a file and drops its entry
