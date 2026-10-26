@@ -42,5 +42,13 @@
   "tests/run.sh": [
     18,
     79
+  ],
+  "tests/test_install_block.py": [
+    532,
+    2957
+  ],
+  "tests/test_require_tight.py": [
+    2372,
+    12320
   ]
 }
