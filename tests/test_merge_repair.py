@@ -311,6 +311,11 @@ def test_records_only_lowering_of_an_untouched_file_passes(tmp_path):
     raised = cli(origin, '--base-ref', base)
     assert raised.returncode == 1
     assert '~ a.py: required [40, 100], recorded [40, 200]' in raised.stderr
+    write_records(origin, {'a.py': [30, 70]})
+    commit(origin, 'a share-raising records-only edit')
+    share = cli(origin, '--base-ref', base)
+    assert share.returncode == 1
+    assert '~ a.py: required [40, 100], recorded [30, 70]' in share.stderr
 
 
 def test_every_untouched_over_record_entry_is_named(tmp_path):
@@ -366,3 +371,29 @@ def test_stale_pr_judged_against_the_merge_base(tmp_path):
     moved = cli(origin, '--base-ref', main_tip)
     assert moved.returncode == 1
     assert '~ f.py: required [20, 50], recorded [44, 105]' in moved.stderr
+
+
+def test_main_movements_past_the_branch_point_are_not_the_prs(tmp_path):
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    (origin / 'g.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
+    (origin / 'h.py').write_text('x' * 90 + '\n')
+    (origin / 'b.py').write_text('x = 1\n')
+    base = commit(origin, 'base')
+    git(origin, 'branch', '-M', 'main')
+    git(origin, 'checkout', '-q', '-b', 'pr')
+    (origin / 'b.py').write_text('x = 1\ny = 2\n')
+    commit(origin, 'a stale pull request touching only b.py')
+    git(origin, 'checkout', '-q', 'main')
+    # Main adds an entry for the above-target g.py the skew left unrecorded,
+    # then drops the stale below-target h.py entry.
+    write_records(origin, {'g.py': [45, 105], 'h.py': [40, 100]})
+    commit(origin, 'main adds the skew entry')
+    write_records(origin, {'g.py': [45, 105]})
+    commit(origin, 'main drops the stale below-target entry')
+    git(origin, 'checkout', '-q', 'pr')
+    result = cli(origin, '--base-ref', git(origin, 'rev-parse', 'main'))
+    assert result.returncode == 0, result.stderr
+    assert '+ g.py' not in result.stderr
+    assert '- h.py' not in result.stderr

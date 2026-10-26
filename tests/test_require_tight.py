@@ -170,6 +170,7 @@ def test_changed_unrecorded_above_target_fails_until_trimmed(repo):
     assert recorded.returncode == 1
     assert 'new.sh: (4, 4) exceeds the target (15, 100)' in recorded.stderr
     assert '+ new.sh' not in recorded.stderr
+    assert '- new.sh: recorded [4, 4]' in recorded.stderr
     # Trimming below the target and dropping the entry in the same pull
     # request passes.
     (repo / 'new.sh').write_text('x = 1\n')
