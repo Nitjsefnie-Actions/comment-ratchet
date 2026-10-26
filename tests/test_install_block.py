@@ -24,8 +24,7 @@ def test_install_block_triggers_only_pull_requests():
     raw, block = install_block()
     assert list(block['on']) == ['pull_request']
     assert not block['on']['pull_request']
-    # The default branch is resolved at run time: no branch literal and no
-    # push trigger anywhere in the block as a consumer saves it.
+    # Saved unedited, so no branch literal may appear.
     for literal in ('push', 'main', 'branches'):
         assert literal not in raw
     checkout = block['jobs']['comment-share']['steps'][0]
@@ -38,8 +37,8 @@ def test_install_block_triggers_only_pull_requests():
                                    for name, item in inputs.items()}
     for step in block['jobs']['comment-share']['steps']:
         assert 'uses' not in step or step['uses'].count('@') == 1
-    # The SHA-and-version-comment pin style, on the raw fence: the YAML
-    # parser strips the comment. Never assert which sha or version.
+    # The YAML parser strips pin comments: match the raw fence, and never a
+    # sha or version.
     import re as raw_re
     pins = raw_re.findall(r'@[0-9a-f]{40} # v\d+\.\d+\.\d+', raw)
     assert len(pins) == 2, pins
@@ -54,15 +53,15 @@ def test_install_block_check_on_a_master_default_consumer(tmp_path):
     repo.mkdir()
     init_repo(repo)
     source = repo / 'a.py'
-    # 40 comments (# + 39 c) + 60 code (x) = (40, 100), above the target.
+    # (40, 100), above the target.
     source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
     write_records(repo, {'a.py': [40, 100]})
     base = commit(repo, 'seed a file above the target')
     git(repo, 'branch', '-M', 'master')
-    # The runner substitutes the with: expressions; resolve them as it would.
+    # Resolve the with: expressions as the runner would.
     inputs = {name: (base if value == '${{ github.event.pull_request.base.sha }}' else value)
               for name, value in raw_inputs.items()}
-    # The env block of the action's run step, from the block's own with:.
+    # The run step's env, from the block's own with:.
     env = {**metadata_env(repo, inputs=inputs),
            'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_REF': 'refs/pull/1/merge',
            'COMMENT_RATCHET_DEFAULT_BRANCH': 'master'}
@@ -70,8 +69,7 @@ def test_install_block_check_on_a_master_default_consumer(tmp_path):
     def run():
         return subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')],
                               cwd=repo, env=env, capture_output=True, text=True)
-    # A pull request that removes two comment bytes at a lower share must
-    # carry the record tighten lowers: (38, 98).
+    # Removing comment bytes at a lower share must carry (38, 98).
     source.write_text('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n')
     commit(repo, 'pr head removes comment bytes')
     result = run()

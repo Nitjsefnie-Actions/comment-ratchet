@@ -1,9 +1,4 @@
-"""The require-tight records map over changed paths.
-
-Head records must equal what tighten writes from the base records: unchanged
-files carry their pair byte-for-byte, changed files carry the tightening
-(lowered, dropped, or added), and every differing entry is named.
-"""
+"""The require-tight records map over changed paths."""
 from __future__ import annotations
 
 import pytest
@@ -15,12 +10,12 @@ from tests.test_ci_comment_baseline import cli, commit, git, repo, write_records
                                              (41, 164, 0)])
 def test_default_branch_code_growth_sets_pr_limit(repo, comments, code, want):
     source = repo / 'x.py'
-    # 40 comments (# + 39 c) + 60 code (x) = (40, 100).
+    # (40, 100).
     source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
     records = write_records(repo, {'x.py': [40, 100]})
     commit(repo, 'record policy')
     before = records.read_bytes()
-    # Same 40 comments + 160 code = (40, 200), without a records commit.
+    # (40, 200), no records commit.
     source.write_text('#' + 'c' * 39 + '\n' + 'x' * 160 + '\n')
     base = commit(repo, 'default branch adds code')
     tightened = cli(repo, '--mode', 'tighten')
@@ -37,14 +32,13 @@ def test_default_branch_code_growth_sets_pr_limit(repo, comments, code, want):
 
 def test_head_below_recorded_comments_carries_the_lowered_record(repo):
     source = repo / 'x.py'
-    # 40 comments (# + 39 c) + 60 code (x) = (40, 100); the default branch
-    # then adds code to (40, 200) without a records commit.
+    # (40, 100), then the default branch adds code to (40, 200).
     source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
     write_records(repo, {'x.py': [40, 100]})
     commit(repo, 'record policy')
     source.write_text('#' + 'c' * 39 + '\n' + 'x' * 160 + '\n')
     base = commit(repo, 'default branch adds code')
-    # One comment byte fewer at a lower share: (39, 189) lowers the record.
+    # One byte fewer at a lower share: (39, 189) lowers the record.
     source.write_text('#' + 'c' * 38 + '\n' + 'x' * 150 + '\n')
     commit(repo, 'pr removes one comment byte')
     result = cli(repo, '--base-ref', base)
@@ -62,13 +56,11 @@ def test_head_below_recorded_comments_carries_the_lowered_record(repo):
 def test_graduated_head_carries_the_dropped_entry(repo, base_comments, base_code,
                                                   head_comments, head_code):
     source = repo / 'x.py'
-    # Bases: (10, 100) or (0, 0); record 40/100 is above target 15%.
     source.write_text(('#' + 'c' * (base_comments - 1) if base_comments else '')
                       + '\n' + 'x' * base_code + '\n')
     write_records(repo, {'x.py': [40, 100]})
     base = commit(repo, 'base graduated before records update')
-    # Heads: (12, 100), (1, 10), (15, 100), all at or below target: tighten
-    # drops the entry, so the pull request carries the drop.
+    # Heads at or below target: tighten drops, the PR carries.
     source.write_text('#' + 'c' * (head_comments - 1) + '\n' + 'x' * head_code + '\n')
     commit(repo, 'pr head stays graduated')
     result = cli(repo, '--base-ref', base)
@@ -84,8 +76,7 @@ def test_empty_base_has_zero_share_limit(repo, source, line):
     (repo / 'x.py').write_text(' \t\n')
     write_records(repo, {'x.py': [40, 100]})
     base = commit(repo, 'empty base source')
-    # Base has (0, 0); heads have (#c = 2) (2, 2) or (x=1 = 3) (0, 3): the
-    # first exceeds the effective limit, the second carries the graduation.
+    # Base (0, 0); heads (2, 2) or (0, 3).
     (repo / 'x.py').write_text(source)
     commit(repo, 'pr fills empty file')
     result = cli(repo, '--base-ref', base)
@@ -97,7 +88,7 @@ def test_graduated_head_below_target_requires_the_record_drop(repo):
     (repo / 'x.py').write_text(' \t\n')
     write_records(repo, {'x.py': [40, 100]})
     base = commit(repo, 'empty base source')
-    # (0, 3) is at or under the target: the pull request carries the drop.
+    # (0, 3) is at or under target: carry the drop.
     (repo / 'x.py').write_text('x=1\n')
     commit(repo, 'pr fills empty file')
     write_records(repo, {})
@@ -131,8 +122,8 @@ def test_head_records_deleted_or_invalid_cannot_dodge_the_required_map(repo):
 
 
 def test_head_records_absent_when_nothing_is_required_passes(repo):
-    # The base holds one entry for a file this change deletes; tightening the
-    # head writes an empty map, so an absent head records file matches it.
+    # Deleting the only recorded file requires an empty map, which an absent
+    # records file matches.
     target = write_records(repo, {'x.py': [3, 6]})
     (repo / 'y.py').write_text('# yes\n')
     commit(repo, 'add a recorded file to delete')
