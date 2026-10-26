@@ -158,13 +158,16 @@ over-record files are judged only where the pull request changes them: a
 changed recorded file fails when it exceeds the effective limit below on
 both dimensions, or when it exceeds its committed record on both dimensions;
 and a changed file above the target with no record fails naming its pair —
-the repair is trimming the file, never recording it. A file the pull request
+the repair is trimming the file, never recording it. Renaming a recorded
+file above the target is the same change — the new name is unrecorded — so
+the file must come back below the target. A file the pull request
 does not change is never failed, whatever the merged tree measures: one that
 sits above its record on both dimensions is named, with both pairs and the
 repair path, as a notice, and one left above the target with no entry by a
 merge skew is named with the exact entry a records-only pull request may
-land. For an unchanged path the head record must be the base pair, a
-tighten-lowering of it, or what the branch point held; a raising or
+land. For an unchanged path the head record must be the base pair, any
+lower pair (fewer comment bytes at a share not above the record), or what
+the branch point held; a raising or
 loosening records-only edit fails naming the base pair. See the two repair
 paths after **Tighten**. The judgment reads the committed `base-ref`..`HEAD`
 diff only: an edit that exists just in an uncommitted working tree is not
