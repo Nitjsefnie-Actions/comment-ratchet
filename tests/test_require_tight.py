@@ -144,4 +144,35 @@ def test_all_offending_files_are_named_with_numbers(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert '~ x.py: required [2, 6], recorded [3, 6]' in result.stderr
-    assert '+ new.sh: required [4, 4]' in result.stderr
+    # The unrecorded file is judged against the target, not admitted by
+    # carrying its own record: the repair is trimming, never recording.
+    assert 'new.sh: (4, 4) exceeds the target (15, 100)' in result.stderr
+    assert 'never record it' in result.stderr
+    assert '+ new.sh' not in result.stderr
+
+
+def test_changed_unrecorded_above_target_fails_until_trimmed(repo):
+    write_records(repo, {'x.py': [3, 6]})
+    base = commit(repo, 'base policy')
+    # A changed unrecorded file above the target fails naming the file and
+    # its pair, exactly as in v1; the repair is trimming, never recording.
+    (repo / 'new.sh').write_text('# yes\n')
+    commit(repo, 'pr adds a file above the target')
+    unrecorded = cli(repo, '--base-ref', base)
+    assert unrecorded.returncode == 1
+    assert 'new.sh: (4, 4) exceeds the target (15, 100)' in unrecorded.stderr
+    assert 'never record it' in unrecorded.stderr
+    # Recording its own pair in the same pull request does not admit it: the
+    # require-tight map adds no entry for a changed unrecorded file.
+    write_records(repo, {'x.py': [3, 6], 'new.sh': [4, 4]})
+    commit(repo, 'pr records its own file instead')
+    recorded = cli(repo, '--base-ref', base)
+    assert recorded.returncode == 1
+    assert 'new.sh: (4, 4) exceeds the target (15, 100)' in recorded.stderr
+    assert '+ new.sh' not in recorded.stderr
+    # Trimming below the target and dropping the entry in the same pull
+    # request passes.
+    (repo / 'new.sh').write_text('x = 1\n')
+    write_records(repo, {'x.py': [3, 6]})
+    commit(repo, 'pr trims the file below the target')
+    assert cli(repo, '--base-ref', base).returncode == 0

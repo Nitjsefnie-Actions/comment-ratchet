@@ -67,15 +67,18 @@ def test_touching_the_skewed_file_names_the_entry_to_carry(tmp_path):
             handle.write('#' + 'c' * 3 + '\n' + 'x' * 13 + '\n')
 
     origin = skewed_repo(tmp_path, shrink, add)
+    # A pull request touching the skewed file is judged against the target:
+    # the repair is trimming, never recording.
     with (origin / 'a.py').open('a') as handle:
         handle.write('x\n')
     commit(origin, 'a pull request that touches a.py')
     result = cli(origin, '--base-ref', git(origin, 'rev-parse', 'HEAD~1'))
     assert result.returncode == 1
-    assert '+ a.py: required [19, 118]' in result.stderr
-    assert 'exceeds' not in result.stderr
-    write_records(origin, {'a.py': [19, 118]})
-    commit(origin, 'carry the entry')
+    assert ('a.py: (19, 118) exceeds the target (15, 100); trim the file, '
+            'never record it') in result.stderr
+    # The same pull request trims the file below the target and passes.
+    (origin / 'a.py').write_text('#' + 'c' * 13 + '\n' + 'x' * 85 + '\n')
+    commit(origin, 'trim the file below the target')
     # The PR base is the skew-holding merge, one commit back.
     assert cli(origin, '--base-ref', git(origin, 'rev-parse',
                                          'HEAD~2')).returncode == 0
@@ -153,7 +156,10 @@ def test_deleted_recorded_file_drops_its_entry(tmp_path):
     commit(origin, 'carry the drop')
     assert cli(origin, '--base-ref', base).returncode == 0
 
-def test_new_above_target_file_adds_its_measured_pair(tmp_path):
+def test_new_above_target_file_fails_until_trimmed(tmp_path):
+    # A file the pull request adds above the target is judged against the
+    # target, not admitted by carrying its own record (v1's rule): the
+    # repair is trimming the file, never recording it.
     origin = tmp_path / 'origin'
     origin.mkdir()
     init_repo(origin)
@@ -164,9 +170,16 @@ def test_new_above_target_file_adds_its_measured_pair(tmp_path):
     commit(origin, 'pr adds a file above target')
     result = cli(origin, '--base-ref', base)
     assert result.returncode == 1
-    assert '+ new.sh: required [4, 4]' in result.stderr
+    assert 'new.sh: (4, 4) exceeds the target (15, 100)' in result.stderr
     write_records(origin, {'x.py': [3, 6], 'new.sh': [4, 4]})
-    commit(origin, 'carry the new entry')
+    commit(origin, 'pr records its own file instead')
+    recorded = cli(origin, '--base-ref', base)
+    assert recorded.returncode == 1
+    assert 'new.sh: (4, 4) exceeds the target (15, 100)' in recorded.stderr
+    assert '+ new.sh' not in recorded.stderr
+    (origin / 'new.sh').write_text('x = 1\n')
+    write_records(origin, {'x.py': [3, 6]})
+    commit(origin, 'pr trims the file below the target')
     assert cli(origin, '--base-ref', base).returncode == 0
 
 def test_records_diff_and_violation_print_in_one_run(repo):
@@ -201,9 +214,13 @@ def test_renamed_recorded_file_moves_its_entry(tmp_path):
     result = cli(origin, '--base-ref', base)
     assert result.returncode == 1
     assert '- a.py: recorded [40, 100]' in result.stderr
-    assert '+ renamed.py: required [40, 100]' in result.stderr
-    write_records(origin, {'renamed.py': [40, 100]})
-    commit(origin, 'carry the moved entry')
+    assert ('renamed.py: (40, 100) exceeds the target (15, 100); trim the '
+            'file, never record it') in result.stderr
+    # The rename survives by trimming below the target and dropping the old
+    # entry in the same pull request.
+    (origin / 'renamed.py').write_text('x' * 60 + '\n')
+    write_records(origin, {})
+    commit(origin, 'trim the renamed file and drop the entry')
     assert cli(origin, '--base-ref', base).returncode == 0
 
 def test_unchanged_over_record_file_named_not_failed(tmp_path):

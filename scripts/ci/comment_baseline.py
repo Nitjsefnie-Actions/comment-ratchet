@@ -232,13 +232,15 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
     changed = changed_paths(root, base_sha)
     head = records_at(root, 'HEAD', records) or {}
     # The records at HEAD must already be what tighten writes over this tree
-    # from the base records, so one pull request lands the records change.
+    # from the base records, so one pull request lands the records change. A
+    # changed unrecorded file gains no entry here: it is judged against the
+    # target, and its repair is trimming, never recording.
     required = {path: list(pair) for path, pair in baseline.items()
                 if path not in changed}
     required.update(tightened({path: pair for path, pair in baseline.items()
                                if path in changed},
                               {path: counts for path, counts in measured.items()
-                               if path in changed}, limit))
+                               if path in changed and path in baseline}, limit))
     failed = False
     report = records_diff(required, head)
     if report:
@@ -254,12 +256,23 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
                and (not above(baseline[path], limit) or above(counts, limit))}
     # A changed file above its committed record on both dimensions fails
     # against the record itself, even where the substituted base pair below
-    # would admit it (issue 69: the record binds the PR that grows it).
+    # would admit it: the record binds the pull request that grows it.
     over_record = {path: counts for path, counts in checked.items()
                    if above(counts, baseline[path]) and counts[0] > baseline[path][0]}
     for path, counts in sorted(over_record.items()):
         print(f'{path}: {counts} exceeds its record {baseline[path]}', file=sys.stderr)
     if over_record:
+        failed = True
+    # A changed unrecorded file above the target fails, as in v1: the target
+    # is the only allowance an unrecorded file has, so the repair is trimming
+    # the file, never recording it.
+    unrecorded = {path: counts for path, counts in measured.items()
+                  if path in changed and path not in baseline
+                  and above(counts, limit)}
+    for path, counts in sorted(unrecorded.items()):
+        print(f'{path}: {counts} exceeds the target {limit}; trim the file, '
+              'never record it', file=sys.stderr)
+    if unrecorded:
         failed = True
     for path, counts in measure_changed_at(root, base_sha,
                                            baseline.keys() & measured.keys()).items():
@@ -270,8 +283,9 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
         print(f'{path}: {detail}', file=sys.stderr)
     if found:
         failed = True
-    # A file the change does not touch that sits above its record on both
-    # dimensions is named, never failed (issue 69: no wedge, repair in a PR).
+    # A file the change does not touch is never failed: one above its record
+    # on both dimensions is named as a notice, so a pull request can repair
+    # it without the wedge.
     for path, counts in sorted(measured.items()):
         if (path in baseline and path not in changed
                 and above(counts, baseline[path]) and counts[0] > baseline[path][0]):
