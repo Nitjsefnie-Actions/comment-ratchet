@@ -380,18 +380,17 @@ def test_main_movements_past_the_branch_point_are_not_the_prs(tmp_path):
     (origin / 'g.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
     (origin / 'h.py').write_text('x' * 90 + '\n')
     (origin / 'b.py').write_text('x = 1\n')
+    # The branch point holds h.py's entry, so the pull request carries it.
+    write_records(origin, {'h.py': [40, 100]})
     base = commit(origin, 'base')
     git(origin, 'branch', '-M', 'main')
     git(origin, 'checkout', '-q', '-b', 'pr')
     (origin / 'b.py').write_text('x = 1\ny = 2\n')
     commit(origin, 'a stale pull request touching only b.py')
     git(origin, 'checkout', '-q', 'main')
-    # Main adds an entry for the above-target g.py the skew left unrecorded,
-    # then drops the stale below-target h.py entry.
-    write_records(origin, {'g.py': [45, 105], 'h.py': [40, 100]})
-    commit(origin, 'main adds the skew entry')
+    # Main adds the skew entry for g.py and drops h.py's in one records edit.
     write_records(origin, {'g.py': [45, 105]})
-    commit(origin, 'main drops the stale below-target entry')
+    commit(origin, 'main adds g.py and drops h.py')
     git(origin, 'checkout', '-q', 'pr')
     result = cli(origin, '--base-ref', git(origin, 'rev-parse', 'main'))
     assert result.returncode == 0, result.stderr
