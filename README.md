@@ -155,7 +155,9 @@ fails when both its share and its comment bytes exceed the effective limit
 below, and a changed file above target with no record fails as a missing
 required entry naming the pair to record. A file the pull request does not
 change is never failed, whatever the merged tree measures — see the two
-repair paths after **Tighten**.
+repair paths after **Tighten**. The judgment reads the committed
+`base-ref`..`HEAD` diff only: an edit that exists just in an uncommitted
+working tree is not part of any pull request and is not judged.
 
 The effective share limit never exceeds the committed record's share. Code
 added on the default branch tightens later pull requests while it stays there.
