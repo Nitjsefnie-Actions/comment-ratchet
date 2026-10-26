@@ -261,3 +261,82 @@ def test_changed_over_record_file_takes_the_failure_not_the_notice(tmp_path):
     assert 'a.py: (45, 104) exceeds its record [40, 100]' in result.stderr
     assert '::notice::' not in result.stdout
 
+
+
+def test_skew_named_in_an_untouched_pr_and_repaired_by_records_only(tmp_path):
+    # brA graduates a.py (entry dropped) while brB, branched earlier, adds
+    # comments within the old record: the merge holds a.py (19, 117) above
+    # the target with no entry. An untouched pull request passes AND names
+    # the exact entry to add, so a records-only pull request lands the
+    # repair; a looser records-only edit fails naming the required pair.
+    def shrink(origin):
+        source = origin / 'a.py'
+        source.write_text('#' + 'c' * 14 + '\n' + 'x' * 60 + '\n' + 'x' * 25 + '\n')
+        write_records(origin, {})
+
+    def add(origin):
+        with (origin / 'a.py').open('a') as handle:
+            handle.write('#' + 'c' * 3 + '\n' + 'x' * 13 + '\n')
+
+    origin = skewed_repo(tmp_path, shrink, add)
+    skew = git(origin, 'rev-parse', 'HEAD')
+    (origin / 'b.py').write_text('x = 1\ny = 2\n')
+    commit(origin, 'a pull request that does not touch a.py')
+    result = cli(origin, '--base-ref', git(origin, 'rev-parse', 'HEAD~1'))
+    assert result.returncode == 0, result.stderr
+    assert 'a.py: (19, 117) exceeds the target (15, 100)' in result.stderr
+    assert 'may land the entry [19, 117]' in result.stderr
+    assert '::notice::' in result.stdout
+    # A records-only pull request landing exactly the named entry passes.
+    write_records(origin, {'a.py': [19, 117]})
+    commit(origin, 'a records-only pull request lands the named entry')
+    assert cli(origin, '--base-ref', skew).returncode == 0
+    # A looser records-only edit fails naming the required pair.
+    write_records(origin, {'a.py': [19, 200]})
+    commit(origin, 'a looser records-only edit')
+    wrong = cli(origin, '--base-ref', skew)
+    assert wrong.returncode == 1
+    assert '~ a.py: required [19, 117], recorded [19, 200]' in wrong.stderr
+
+
+def test_records_only_lowering_of_an_untouched_file_passes(tmp_path):
+    # A records-only pull request may lower an untouched file's record
+    # (fewer comment bytes at a share not above the record's), as in v1; a
+    # raising records-only edit fails naming the base pair.
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    (origin / 'a.py').write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    (origin / 'b.py').write_text('x = 1\n')
+    write_records(origin, {'a.py': [40, 100]})
+    base = commit(origin, 'base')
+    write_records(origin, {'a.py': [38, 98]})
+    commit(origin, 'a records-only lowering')
+    assert cli(origin, '--base-ref', base).returncode == 0
+    write_records(origin, {'a.py': [40, 200]})
+    commit(origin, 'a raising records-only edit')
+    raised = cli(origin, '--base-ref', base)
+    assert raised.returncode == 1
+    assert '~ a.py: required [40, 100], recorded [40, 200]' in raised.stderr
+
+
+def test_every_untouched_over_record_entry_is_named(tmp_path):
+    # Both notice kinds at once, untouched by the pull request: a recorded
+    # file above its record, and a merge-skew file with no entry. Every
+    # entry is named with its pairs and the repair pointer.
+    origin = tmp_path / 'origin'
+    origin.mkdir()
+    init_repo(origin)
+    (origin / 'a.py').write_text('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n')
+    (origin / 'c.sh').write_text('# yes\n')
+    (origin / 'b.py').write_text('x = 1\n')
+    write_records(origin, {'a.py': [40, 100]})
+    base = commit(origin, 'main holds two loose entries')
+    (origin / 'b.py').write_text('x = 1\ny = 2\n')
+    commit(origin, 'a pull request that touches neither')
+    result = cli(origin, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+    assert 'a.py: (45, 105) exceeds its record [40, 100]' in result.stderr
+    assert 'c.sh: (4, 4) exceeds the target (15, 100)' in result.stderr
+    assert 'may land the entry [4, 4]' in result.stderr
+    assert result.stdout.count('::notice::') == 2

@@ -140,14 +140,20 @@ def changed_paths(root: Path, sha: str) -> set[str]:
     return {path for path in listed.stdout.decode('utf-8').split('\0') if path}
 
 
-def records_diff(required: dict[str, list[int]], actual: dict[str, list[int]]) -> list[str]:
+def records_diff(required: dict[str, list[int]], actual: dict[str, list[int]],
+                 optional: set[str] = frozenset(),
+                 accepted: dict[str, list[int]] | None = None) -> list[str]:
     lines = []
     for path in sorted(set(required) - set(actual)):
+        if path in optional:
+            continue
         lines.append(f'+ {path}: required {required[path]}')
     for path in sorted(set(actual) - set(required)):
         lines.append(f'- {path}: recorded {actual[path]}')
     for path in sorted(set(required) & set(actual)):
         if required[path] != actual[path]:
+            if accepted and accepted.get(path) == actual[path]:
+                continue
             lines.append(f'~ {path}: required {required[path]}, recorded {actual[path]}')
     return lines
 
@@ -231,24 +237,46 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
         return 0
     changed = changed_paths(root, base_sha)
     head = records_at(root, 'HEAD', records) or {}
+    # Unchanged paths the merge skew left unrecorded above the target: the
+    # head entry is optional, and when present it must be the measured pair,
+    # so a records-only pull request can land the named repair.
+    optional = {path: list(counts) for path, counts in measured.items()
+                if path not in changed and path not in baseline
+                and above(counts, limit)}
+    # An unchanged recorded path may carry a records-only tightening: fewer
+    # comment bytes at a share not above the record's, by tighten's own
+    # rewrite rule judged on the record the pull request carries.
+    accepted = {path: list(pair) for path, pair in head.items()
+                if path in baseline and path not in changed
+                and pair[0] < baseline[path][0] and not above(pair, baseline[path])}
     # The records at HEAD must already be what tighten writes over this tree
     # from the base records, so one pull request lands the records change. A
     # changed unrecorded file gains no entry here: it is judged against the
     # target, and its repair is trimming, never recording.
     required = {path: list(pair) for path, pair in baseline.items()
                 if path not in changed}
+    required.update(optional)
     required.update(tightened({path: pair for path, pair in baseline.items()
                                if path in changed},
                               {path: counts for path, counts in measured.items()
                                if path in changed and path in baseline}, limit))
     failed = False
-    report = records_diff(required, head)
+    report = records_diff(required, head, optional, accepted)
     if report:
         failed = True
         print('require-tight: the records at HEAD differ from what tighten '
               'writes over this tree from the base records:', file=sys.stderr)
         for line in report:
             print(line, file=sys.stderr)
+    # A missing optional entry is the merge skew the pull request does not
+    # touch: name the exact entry to add, so a records-only pull request can
+    # land the repair, and never fail the pull request for it.
+    for path in sorted(optional.keys() - head.keys()):
+        notice = (f'{path}: {measured[path]} exceeds the target {limit}; a '
+                  'records-only pull request may land the entry '
+                  f'{optional[path]}')
+        print(notice, file=sys.stderr)
+        print(f'::notice::{notice}', file=sys.stdout)
     # Measurement judges only files this change touches: a file the change
     # does not alter is never failed for a tree that moved under it.
     checked = {path: counts for path, counts in measured.items()
