@@ -18,6 +18,7 @@
 !run.py
 !requirements.txt
 !requirements-test.txt
+!requirements-build.txt
 !package.json
 !package-lock.json
 !pytest.ini
