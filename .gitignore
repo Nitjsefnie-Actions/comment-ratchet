@@ -56,7 +56,7 @@ tests/*
 !.github/workflows/requirements.txt
 !.github/workflows/requirements-pip-audit.txt
 !.coveragerc
-!.github/workflows/ratchet-push.yml
+!.github/workflows/size-baseline.yml
 !.github/workflows/coverage-comment.yml
 !.github/scripts/
 .github/scripts/*
