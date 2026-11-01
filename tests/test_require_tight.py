@@ -1,9 +1,11 @@
 """The require-tight records map over changed paths."""
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
-from tests.test_ci_comment_baseline import cli, commit, git, repo, write_records
+from tests.test_ci_comment_baseline import cli, commit, git, policy, repo, write_records
 
 
 @pytest.mark.parametrize('comments,code,want', [(45, 175, 1), (40, 170, 0),
@@ -162,13 +164,18 @@ def test_trimming_every_recorded_file_cannot_delete_the_records(repo):
     assert cli(repo, '--base-ref', base).returncode == 0
 
 
-def test_a_branch_from_before_adoption_need_not_carry_the_records(repo):
+def branch_before_adoption(repo):
     git(repo, 'branch', 'pr')
     write_records(repo, {'x.py': [3, 6]})
     base = commit(repo, 'adopt')
     git(repo, 'checkout', '-q', 'pr')
     (repo / 'y.py').write_text('y = 1\n')
     commit(repo, 'pr branched before adoption')
+    return base
+
+
+def test_a_branch_from_before_adoption_need_not_carry_the_records(repo):
+    base = branch_before_adoption(repo)
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 0, result.stderr
     assert DELETED not in result.stderr
@@ -303,3 +310,61 @@ def test_a_merge_that_keeps_readopted_records_passes(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 0, result.stderr
     assert DELETED not in result.stderr
+
+
+@pytest.mark.parametrize('status,keep_tree', [(128, True), (129, False)])
+def test_a_failed_merge_tree_fails_closed(repo, monkeypatch, capsys, status, keep_tree):
+    base = branch_before_adoption(repo)
+    real = policy().git
+
+    def failing(root, *args, **kwargs):
+        result = real(root, *args, **kwargs)
+        if args[0] != 'merge-tree':
+            return result
+        # A fatal status fails even when stdout still names a merged tree.
+        return subprocess.CompletedProcess(result.args, status,
+                                           result.stdout if keep_tree else b'',
+                                           b'merge failed')
+
+    monkeypatch.setattr(policy(), 'git', failing)
+    assert policy().main(['--root', str(repo), '--base-ref', base]) == 1
+    assert 'cannot merge HEAD into input base-ref: merge failed' in capsys.readouterr().err
+
+
+def test_a_head_holding_the_records_skips_the_merge(repo, monkeypatch):
+    write_records(repo, {})
+    base = commit(repo, 'adopt an empty records file')
+    (repo / 'y.py').write_text('y = 1\n')
+    commit(repo, 'pr keeps the empty records file')
+    real = policy().git
+
+    def no_merge(root, *args, **kwargs):
+        assert args[0] != 'merge-tree'
+        return real(root, *args, **kwargs)
+
+    monkeypatch.setattr(policy(), 'git', no_merge)
+    assert policy().run(repo, '.github/comment-share.json', 'check', 15, base) == 0
+
+
+def test_a_conflicted_deletion_passes_until_resolved(repo):
+    target = write_records(repo, {'x.py': [3, 6]})
+    commit(repo, 'adopt')
+    git(repo, 'branch', '-M', 'main')
+    git(repo, 'checkout', '-q', '-b', 'pr')
+    target.unlink()
+    (repo / 'x.py').write_text('x = 1\n')
+    commit(repo, 'pr graduates x.py and deletes the records')
+    git(repo, 'checkout', '-q', 'main')
+    write_records(repo, {'x.py': [2, 6]})
+    base = commit(repo, 'main edits the records')
+    git(repo, 'checkout', '-q', 'pr')
+    # Git keeps main's file in the conflicted tree; the merge cannot land.
+    assert cli(repo, '--base-ref', base).returncode == 0
+    merged = subprocess.run(['git', '-C', str(repo), 'merge', '-q', 'main'],
+                            capture_output=True, check=False)
+    assert merged.returncode == 1
+    git(repo, 'rm', '-q', '.github/comment-share.json')
+    commit(repo, 'resolve the conflict by deleting the records')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert DELETED in result.stderr
