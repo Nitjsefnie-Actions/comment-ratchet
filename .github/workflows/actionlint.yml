@@ -97,9 +97,12 @@ jobs:
         # artifact the index serves for that version. The `--upgrade pip`
         # line is gone for the same reason -- it installed whatever bytes
         # the index served, unpinned, and the runner's preinstalled pip is
-        # far newer than --require-hashes needs.
+        # far newer than --require-hashes needs. The PyYAML sdist builds
+        # against the hash-pinned setuptools, without isolation, so its build
+        # fetches nothing unhashed either.
         run: |
-          python3 -m pip install --require-hashes -r .github/workflows/requirements.txt
+          python3 -m pip install --require-hashes --only-binary=:all: -r requirements-build.txt
+          python3 -m pip install --require-hashes --no-build-isolation -r .github/workflows/requirements.txt
 
       - name: actionlint
         id: actionlint
