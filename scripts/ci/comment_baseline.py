@@ -256,10 +256,16 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
     # branch point. Records policy itself stays at base-ref.
     branch_point = git(root, 'merge-base', base_sha, 'HEAD').stdout.decode().strip()
     changed = changed_paths(root, branch_point)
-    origin = {path: list(pair)
-              for path, pair in (records_at(root, branch_point, records) or {}).items()
+    branched = records_at(root, branch_point, records)
+    origin = {path: list(pair) for path, pair in (branched or {}).items()
               if path not in changed}
-    head = records_at(root, 'HEAD', records) or {}
+    head = records_at(root, 'HEAD', records)
+    # Deleting the file would hand the next pull request the exact-seed path.
+    failed = head is None and branched is not None
+    if failed:
+        print(f'{records}: deleted by this pull request; keep the file, '
+              'holding {} when it records nothing', file=sys.stderr)
+    head = head or {}
     # Unchanged paths left unrecorded above the target by a merge skew: the
     # head entry is optional, and present means the measured pair.
     optional = {path: list(counts) for path, counts in measured.items()
@@ -281,7 +287,6 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
                                if path in changed},
                               {path: counts for path, counts in measured.items()
                                if path in changed and path in baseline}, limit))
-    failed = False
     # The branch-point tolerance is for unchanged paths only: a changed
     # path's required entry is always reported missing.
     report = records_diff(required, head, optional, accepted,

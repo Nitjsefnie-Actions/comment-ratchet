@@ -121,9 +121,11 @@ def test_head_records_deleted_or_invalid_cannot_dodge_the_required_map(repo):
     assert 'records' in result.stderr
 
 
-def test_head_records_absent_when_nothing_is_required_passes(repo):
-    # Deleting the only recorded file requires an empty map, which an absent
-    # records file matches.
+DELETED = '.github/comment-share.json: deleted by this pull request'
+
+
+def test_deleting_the_records_file_fails_when_nothing_is_required(repo):
+    # x.py (3, 6) is an untouched unrecorded skew: its entry is optional.
     target = write_records(repo, {'x.py': [3, 6]})
     (repo / 'y.py').write_text('# yes\n')
     commit(repo, 'add a recorded file to delete')
@@ -131,8 +133,45 @@ def test_head_records_absent_when_nothing_is_required_passes(repo):
     base = commit(repo, 'base policy')
     target.unlink()
     git(repo, 'rm', '-q', 'y.py')
-    commit(repo, 'pr deletes the only recorded file')
+    commit(repo, 'pr deletes the only recorded file and the records')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert DELETED in result.stderr
+    write_records(repo, {})
+    commit(repo, 'keep an empty records file')
+    kept = cli(repo, '--base-ref', base)
+    assert kept.returncode == 0, kept.stderr
+    assert DELETED not in kept.stderr
+
+
+def test_trimming_every_recorded_file_cannot_delete_the_records(repo):
+    names = ('x.py', 'new.py')
+    for name in names:
+        (repo / name).write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    target = write_records(repo, {name: [40, 100] for name in names})
+    base = commit(repo, 'record policy')
+    for name in names:
+        (repo / name).write_text('#' + 'c' * 9 + '\n' + 'x' * 90 + '\n')
+    target.unlink()
+    commit(repo, 'pr trims both files and deletes the records')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert DELETED in result.stderr
+    write_records(repo, {})
+    commit(repo, 'carry both graduations in an empty records file')
     assert cli(repo, '--base-ref', base).returncode == 0
+
+
+def test_a_branch_from_before_adoption_need_not_carry_the_records(repo):
+    git(repo, 'branch', 'pr')
+    write_records(repo, {'x.py': [3, 6]})
+    base = commit(repo, 'adopt')
+    git(repo, 'checkout', '-q', 'pr')
+    (repo / 'y.py').write_text('y = 1\n')
+    commit(repo, 'pr branched before adoption')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+    assert DELETED not in result.stderr
 
 
 def test_all_offending_files_are_named_with_numbers(repo):

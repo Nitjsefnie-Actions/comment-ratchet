@@ -187,7 +187,9 @@ nothing missing, no extra entries, and no substituted equivalent fraction.
 Every differing entry is named. If neither revision has the file, check fails
 and tells you to run tighten to seed one and commit it. Once the base has a
 records file, head edits cannot replace the base records or the effective
-limits above.
+limits above. A pull request whose branch point has the records file cannot
+delete it: its check fails naming the file, which holds `{}` when it records
+nothing.
 
 **Tighten** seeds an absent records file in one run. For existing records, it
 rewrites a pair only when measured comment bytes are fewer and the measured
