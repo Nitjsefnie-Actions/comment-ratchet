@@ -187,9 +187,9 @@ nothing missing, no extra entries, and no substituted equivalent fraction.
 Every differing entry is named. If neither revision has the file, check fails
 and tells you to run tighten to seed one and commit it. Once the base has a
 records file, head edits cannot replace the base records or the effective
-limits above. A pull request cannot delete the records file while any best
-merge base of `base-ref` and HEAD holds it: its check fails naming the file,
-which holds `{}` when it records nothing.
+limits above. A pull request whose head lacks the records file fails naming
+it when merging HEAD into `base-ref` (`git merge-tree --write-tree`, Git 2.38
+or later) would drop the file; it holds `{}` when it records nothing.
 
 **Tighten** seeds an absent records file in one run. For existing records, it
 rewrites a pair only when measured comment bytes are fewer and the measured

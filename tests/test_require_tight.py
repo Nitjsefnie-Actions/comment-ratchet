@@ -278,3 +278,28 @@ def test_a_second_merge_base_holding_the_records_binds_the_deletion(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert DELETED in result.stderr
+
+
+def test_a_merge_that_keeps_readopted_records_passes(repo):
+    (repo / 'x.py').write_text('x = 1\n')
+    target = write_records(repo, {})
+    commit(repo, 'adopt')
+    git(repo, 'branch', '-M', 'main')
+    git(repo, 'checkout', '-q', '-b', 'pr')
+    (repo / 'a.py').write_text('a = 1\n')
+    keeps = commit(repo, 'pr side keeps the records')
+    git(repo, 'checkout', '-q', 'main')
+    git(repo, 'rm', '-q', str(target))
+    (repo / 'b.py').write_text('b = 1\n')
+    drops = commit(repo, 'main drops the records')
+    git(repo, 'merge', '-q', '--no-ff', '--no-edit', keeps)
+    write_records(repo, {})
+    base = commit(repo, 'main readopts the records')
+    git(repo, 'checkout', '-q', 'pr')
+    git(repo, 'merge', '-q', '--no-ff', '--no-edit', drops)
+    (repo / 'z.py').write_text('z = 1\n')
+    commit(repo, 'pr adds a file')
+    assert len(git(repo, 'merge-base', '--all', base, 'HEAD').split()) == 2
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 0, result.stderr
+    assert DELETED not in result.stderr
