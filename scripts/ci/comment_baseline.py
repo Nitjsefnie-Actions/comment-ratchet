@@ -260,11 +260,16 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
               for path, pair in (records_at(root, branch_point, records) or {}).items()
               if path not in changed}
     head = records_at(root, 'HEAD', records)
-    # A merge deletes a file any best merge base holds, and the next pull
-    # request would take the exact-seed path.
-    bases = git(root, 'merge-base', '--all', base_sha, 'HEAD').stdout.decode().split()
-    failed = head is None and any(records_at(root, sha, records) is not None
-                                  for sha in bases)
+    failed = False
+    if head is None:
+        # Without the file, the next pull request takes the exact-seed path.
+        merged = git(root, 'merge-tree', '--write-tree', '--no-messages',
+                     base_sha, 'HEAD', check=False)
+        if merged.returncode not in (0, 1):
+            raise ValueError('cannot merge HEAD into input base-ref: '
+                             + merged.stderr.decode('utf-8', errors='replace').strip())
+        tree = merged.stdout.decode().split()[0]
+        failed = not git(root, 'ls-tree', '-z', tree, '--', records).stdout
     if failed:
         print(f'{records}: deleted by this pull request; keep the file, '
               'holding {} when it records nothing', file=sys.stderr)
