@@ -190,6 +190,14 @@ records file, head edits cannot replace the base records or the effective
 limits above. A pull request whose head lacks the records file fails naming
 it when merging HEAD into `base-ref` (`git merge-tree --write-tree`, Git 2.38
 or later) would drop the file; it holds `{}` when it records nothing.
+That verdict holds for a merge or a squash, not for a commit-by-commit
+replay: a branch cut before the base adopted the file, which adds the
+identical file and later deletes it, passes, yet `git rebase` onto the base
+drops the add commit as already upstream and keeps the deletion, leaving no
+records file. github.com's rebase merge refused such a pull request in a
+hosted test on 2026-11-01 (`405 Base branch was modified`), so the exposed
+route is a local rebase pushed straight to the default branch: land pull
+requests through the pull request, not by pushing a local rebase.
 
 **Tighten** seeds an absent records file in one run. For existing records, it
 rewrites a pair only when measured comment bytes are fewer and the measured
