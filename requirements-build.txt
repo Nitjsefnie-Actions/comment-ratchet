@@ -1,0 +1,7 @@
+# Build backend for the PyYAML sdist, installed with --only-binary=:all:
+# before requirements.txt. That install passes --no-build-isolation, so pip
+# fetches no unhashed build dependency; without Cython the build is pure
+# Python. Remove this file with the sdist exception once PyYAML ships cp315
+# wheels.
+setuptools==84.2.1 \
+    --hash=sha256:ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2

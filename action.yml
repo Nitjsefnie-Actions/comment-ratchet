@@ -43,6 +43,7 @@ runs:
         runtime_dir="$(mktemp -d "$RUNNER_TEMP/comment-ratchet.XXXXXX")"
         python3 -I -m venv "$runtime_dir"
         # PyYAML has no CPython 3.15 wheel yet, so permit its sdist alone.
-        "$runtime_dir/bin/python" -I -m pip install --require-hashes --only-binary=:all: --no-binary=PyYAML -r "$GITHUB_ACTION_PATH/requirements.txt"
+        "$runtime_dir/bin/python" -I -m pip install --require-hashes --only-binary=:all: -r "$GITHUB_ACTION_PATH/requirements-build.txt"
+        "$runtime_dir/bin/python" -I -m pip install --require-hashes --only-binary=:all: --no-binary=PyYAML --no-build-isolation -r "$GITHUB_ACTION_PATH/requirements.txt"
         npm ci --prefix "$GITHUB_ACTION_PATH" --ignore-scripts --no-audit --no-fund
         "$runtime_dir/bin/python" -I "$GITHUB_ACTION_PATH/run.py"
