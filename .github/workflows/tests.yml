@@ -2,7 +2,8 @@ name: tests
 
 # Linux-only checks cannot establish macOS portability. Both POSIX legs run
 # the same real-subprocess suite with Python and the locked JS tokenizer.
-# Contribution events live here so one aggregate can need every gate leg.
+# Contribution events live here so one aggregate can need every gate leg;
+# size-baseline.yml is size-ratchet's install block and reports on its own.
 on:
   push:
     # A PR head already runs below: an unfiltered push schedules the same
@@ -181,22 +182,6 @@ jobs:
           mode: check
           base-ref: ${{ github.event.pull_request.base.sha || github.sha }}
 
-  size-baseline:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Check line counts against the size baseline
-        # Forced check: workflow_dispatch is an event auto fails closed on.
-        uses: Nitjsefnie-Actions/size-ratchet@0c9790acfe6bec19f1310a6e17428332185ea3ec # v1.1.0
-        with:
-          mode: check
-          base-ref: ${{ github.event.pull_request.base.sha || github.sha }}
-
   # The pinned actionlint accepts the documented ./ reusable-workflow syntax;
   # zizmor's newer $/ recommendation is unsupported by that pinned parser.
   codeql:
@@ -216,7 +201,7 @@ jobs:
     # cancelled ancestor. This tree has no classification skips, so every
     # skipped, failed, cancelled or missing leg must fold red.
     # actionlint reports independently; needs can only name this workflow's legs.
-    needs: [suites, shellcheck, comment-share, size-baseline, codeql, secrets, audit]
+    needs: [suites, shellcheck, comment-share, codeql, secrets, audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -243,64 +228,3 @@ jobs:
         env:
           COMMENT_RATCHET_NEEDS_JSON: ${{ toJSON(needs) }}
         run: python3 scripts/ci/aggregate_gate.py
-
-  ratchet:
-    # Staging is keyless and follows the whole gate, not just one matrix cell.
-    # A records-only push runs this once more, but the no-change stage below
-    # emits no artifact and terminates the push chain. Comment-share records
-    # stage nothing; pull requests carry them.
-    needs: aggregate
-    if: >-
-      success() && needs.aggregate.result == 'success' &&
-      github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Tighten the size baseline after the green gate
-        # The pin names the release: the action is consumed from GitHub by SHA.
-        uses: Nitjsefnie-Actions/size-ratchet@0c9790acfe6bec19f1310a6e17428332185ea3ec # v1.1.0
-        with:
-          mode: tighten
-      - name: Stage changed records for the separate push workflow
-        id: stage
-        env:
-          COMMENT_RATCHET_BASE_SHA: ${{ github.sha }}
-        run: |
-          if [ "$(git rev-parse HEAD)" != "$COMMENT_RATCHET_BASE_SHA" ]; then
-            echo 'Checkout does not match the measured run head' >&2
-            exit 1
-          fi
-          changed=0
-          for records in .github/size-baseline.json; do
-            this=0
-            git diff --quiet -- "$records" || this=$?
-            if [ "$this" -gt 1 ]; then
-              echo "git diff failed with $this" >&2
-              exit "$this"
-            fi
-            if [ "$this" -eq 0 ]; then
-              continue
-            fi
-            mkdir -p "$RUNNER_TEMP/ratchet-push"
-            cp "$records" "$RUNNER_TEMP/ratchet-push/${records##*/}"
-            changed=1
-          done
-          if [ "$changed" -eq 0 ]; then
-            echo 'changed=false' >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          printf '%s\n' "$COMMENT_RATCHET_BASE_SHA" > "$RUNNER_TEMP/ratchet-push/base.txt"
-          echo 'changed=true' >> "$GITHUB_OUTPUT"
-      - name: Upload the changed records
-        if: success() && steps.stage.outputs.changed == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ratchet-push
-          path: ${{ runner.temp }}/ratchet-push
-          if-no-files-found: error
-          retention-days: 1
