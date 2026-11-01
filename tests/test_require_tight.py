@@ -246,3 +246,35 @@ def test_deleted_records_file_cannot_drop_a_changed_entry(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert '+ x.py: required [40, 100]' in result.stderr
+
+
+def test_deleting_an_empty_records_file_fails(repo):
+    target = write_records(repo, {})
+    base = commit(repo, 'adopt an empty records file')
+    target.unlink()
+    (repo / 'y.py').write_text('y = 1\n')
+    commit(repo, 'pr deletes the empty records file')
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert DELETED in result.stderr
+
+
+def test_a_second_merge_base_holding_the_records_binds_the_deletion(repo):
+    git(repo, 'branch', '-M', 'main')
+    git(repo, 'checkout', '-q', '-b', 'pr')
+    target = write_records(repo, {'x.py': [3, 6]})
+    adopt = commit(repo, 'adopt')
+    git(repo, 'checkout', '-q', 'main')
+    (repo / 'y.py').write_text('y = 1\n')
+    other = commit(repo, 'main moves without records')
+    git(repo, 'merge', '-q', '--no-ff', '--no-edit', adopt)
+    base = git(repo, 'rev-parse', 'HEAD')
+    git(repo, 'checkout', '-q', 'pr')
+    git(repo, 'merge', '-q', '--no-ff', '--no-commit', other)
+    target.unlink()
+    (repo / 'x.py').write_text('x = 1\n')
+    commit(repo, 'criss-cross merge drops the records')
+    assert len(git(repo, 'merge-base', '--all', base, 'HEAD').split()) == 2
+    result = cli(repo, '--base-ref', base)
+    assert result.returncode == 1
+    assert DELETED in result.stderr

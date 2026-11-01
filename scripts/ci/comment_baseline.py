@@ -256,12 +256,15 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
     # branch point. Records policy itself stays at base-ref.
     branch_point = git(root, 'merge-base', base_sha, 'HEAD').stdout.decode().strip()
     changed = changed_paths(root, branch_point)
-    branched = records_at(root, branch_point, records)
-    origin = {path: list(pair) for path, pair in (branched or {}).items()
+    origin = {path: list(pair)
+              for path, pair in (records_at(root, branch_point, records) or {}).items()
               if path not in changed}
     head = records_at(root, 'HEAD', records)
-    # Deleting the file would hand the next pull request the exact-seed path.
-    failed = head is None and branched is not None
+    # A merge deletes a file any best merge base holds, and the next pull
+    # request would take the exact-seed path.
+    bases = git(root, 'merge-base', '--all', base_sha, 'HEAD').stdout.decode().split()
+    failed = head is None and any(records_at(root, sha, records) is not None
+                                  for sha in bases)
     if failed:
         print(f'{records}: deleted by this pull request; keep the file, '
               'holding {} when it records nothing', file=sys.stderr)
