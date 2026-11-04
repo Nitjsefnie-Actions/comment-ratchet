@@ -58,6 +58,7 @@ tests/*
 !.coveragerc
 !.github/workflows/size-baseline.yml
 !.github/workflows/coverage-comment.yml
+!.github/workflows/pin-guard.yml
 !.github/scripts/
 .github/scripts/*
 !.github/scripts/diff_coverage.py
