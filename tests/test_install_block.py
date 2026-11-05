@@ -56,7 +56,8 @@ def evaluate(expression, context):
         value = primary()
         while tokens[position:position + 1] == ['==']:
             take()
-            value = value == primary()
+            # GitHub compares strings ignoring case.
+            value = str(value).casefold() == str(primary()).casefold()
         return value
 
     def both():
@@ -115,16 +116,18 @@ def context(event, ref_type='branch', ref_name='main', default='main', workflow=
     # A called run sees its caller's event under the caller's workflow name.
     (context('push', workflow='tests'), 'main-push', True),
     (context('pull_request', ref_name='1/merge', workflow='tests'), '', True),
+    (context('push', workflow='Comment Share'), 'main-push', True),
 ], ids=['pull-request', 'main-push', 'master-push', 'other-branch', 'tag',
-        'dispatch', 'called-push', 'called-pull-request'])
+        'dispatch', 'called-push', 'called-pull-request', 'caller-named-alike'])
 def test_environment_binds_only_on_a_default_branch_push(github, environment, runs):
     _, block = install_block()
     job = block['jobs']['comment-share']
     assert evaluate(job['environment'], github) == environment
     assert all(bool(evaluate(step['if'], github)) is runs for step in job['steps'])
     group = evaluate(block['concurrency']['group'], github)
-    assert group == ('comment-share-called-42' if github['github.workflow'] != 'comment share'
-                     else f'comment-share-{github["github.ref"]}')
+    standalone = github['github.workflow'].casefold() == 'comment share'
+    assert group == (f'comment-share-{github["github.ref"]}' if standalone
+                     else 'comment-share-called-42')
 
 
 @pytest.mark.parametrize('require_tight,want', [('false', 0), ('true', 1)])

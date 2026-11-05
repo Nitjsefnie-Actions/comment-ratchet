@@ -12,9 +12,30 @@ import yaml
 
 from tests.test_ci_comment_baseline import commit, git, init_repo, write_records
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts' / 'ci'))
+
 ROOT = Path(__file__).resolve().parents[1]
-REMOTE = 'git@github.com:owner/consumer.git'
 RECORDS = '.github/comment-share.json'
+# Records each call, then serves git@github.com:owner/consumer.git from the
+# local bare repository.
+FAKE_SSH = '''#!{python}
+import json, os, shlex, stat, subprocess, sys
+args = sys.argv[1:]
+options = [args[at + 1] for at, arg in enumerate(args) if arg == '-o']
+identity = args[args.index('-i') + 1]
+hosts = next(option.split('=', 1)[1] for option in options
+             if option.startswith('UserKnownHostsFile='))
+verb, path = shlex.split(args[-1])
+with open(os.environ['FAKE_SSH_LOG'], 'a') as log:
+    log.write(json.dumps({{
+        'host': args[-2], 'path': path, 'options': options,
+        'mode': stat.S_IMODE(os.stat(identity).st_mode),
+        'key': open(identity).read(), 'hosts': open(hosts).read(),
+        'key_in_env': 'COMMENT_RATCHET_PUSH_KEY' in os.environ}}) + '\\n')
+if os.environ.get('FAKE_SSH_REFUSE') == verb:
+    sys.exit(255)
+sys.exit(subprocess.call(['git', verb.removeprefix('git-'), os.environ['FAKE_SSH_REPO']]))
+'''
 
 
 @pytest.fixture
@@ -33,7 +54,16 @@ def consumer(tmp_path):
     git(repo, 'push', '-q', str(origin), 'main')
     git(repo, 'checkout', '-q', '--detach', sha)
     (tmp_path / 'runner').mkdir()
+    (tmp_path / 'bin').mkdir()
+    ssh = tmp_path / 'bin' / 'ssh'
+    ssh.write_text(FAKE_SSH.format(python=sys.executable))
+    ssh.chmod(0o755)
     return repo, origin, sha
+
+
+def ssh_calls(repo):
+    log = repo.parent / 'ssh.log'
+    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
 
 
 def run_action(repo, sha, key='test-key', **overrides):
@@ -48,9 +78,9 @@ def run_action(repo, sha, key='test-key', **overrides):
                COMMENT_RATCHET_MODE='auto', COMMENT_RATCHET_RECORDS=RECORDS,
                COMMENT_RATCHET_PUSH_KEY=key,
                COMMENT_RATCHET_PUSH_KEY_SET=str(bool(key)).lower(),
-               # The SSH remote resolves to the local bare repository.
-               GIT_CONFIG_COUNT='1', GIT_CONFIG_KEY_0=f'url.{repo.parent / "origin.git"}.insteadOf',
-               GIT_CONFIG_VALUE_0=REMOTE)
+               PATH=f'{repo.parent / "bin"}{os.pathsep}{os.environ["PATH"]}',
+               FAKE_SSH_LOG=str(repo.parent / 'ssh.log'),
+               FAKE_SSH_REPO=str(repo.parent / 'origin.git'))
     env.update(overrides)
     measured = subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo, env=env,
                               capture_output=True, text=True, check=False)
@@ -94,6 +124,13 @@ def test_a_default_branch_push_tightens_and_pushes(consumer):
         'ci: tighten comment-ratchet records')
     # The key file never outlives the push step.
     assert not list((repo.parent / 'runner').iterdir())
+    import push_records
+    [call] = ssh_calls(repo)
+    assert call['host'] == 'git@github.com' and call['path'] == 'owner/consumer.git'
+    assert call['key'] == 'test-key\n' and call['mode'] == 0o600
+    assert not call['key_in_env']
+    assert call['hosts'] == ''.join(f'github.com {host}\n' for host in push_records.HOST_KEYS)
+    assert {'IdentitiesOnly=yes', 'StrictHostKeyChecking=yes'} <= set(call['options'])
     # The records commit's own run finds nothing to tighten and pushes nothing.
     git(repo, 'fetch', '-q', str(origin), 'main')
     git(repo, 'checkout', '-q', '-f', new)
@@ -172,3 +209,24 @@ def test_a_malformed_records_file_fails(consumer):
     assert measured.returncode == 1
     assert 'invalid records' in measured.stderr
     assert pushed is None
+
+
+def test_an_ambient_ssh_command_cannot_replace_the_pinned_one(consumer):
+    repo, origin, sha = consumer
+    measured, pushed = run_action(repo, sha, GIT_SSH_COMMAND='false')
+    assert pushed is not None and pushed.returncode == 0, pushed and pushed.stderr
+    assert len(ssh_calls(repo)) == 1
+    assert tip(origin) != sha
+
+
+def test_an_unreadable_branch_after_a_refusal_fails(consumer):
+    repo, origin, sha = consumer
+    hook = origin / 'hooks' / 'pre-receive'
+    hook.write_text('#!/bin/sh\nexit 1\n')
+    hook.chmod(0o755)
+    measured, pushed = run_action(repo, sha, FAKE_SSH_REFUSE='git-upload-pack')
+    assert measured.returncode == 0, measured.stderr
+    assert pushed.returncode == 1
+    assert 'reading main failed' in pushed.stderr
+    assert '::notice::' not in pushed.stdout
+    assert tip(origin) == sha

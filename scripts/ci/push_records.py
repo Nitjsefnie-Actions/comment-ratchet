@@ -63,14 +63,16 @@ def main() -> int:
         with os.fdopen(os.open(identity, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as handle:
             handle.write(key.strip() + '\n')
         hosts.write_text(''.join(f'github.com {host}\n' for host in HOST_KEYS))
-        ssh = ('-c', 'core.sshCommand=' + shlex.join([
-            'ssh', '-i', str(identity), '-o', 'IdentitiesOnly=yes',
-            '-o', f'UserKnownHostsFile={hosts}', '-o', 'StrictHostKeyChecking=yes']))
-        pushed = git(root, *ssh, 'push', remote, f'{commit}:refs/heads/{branch}', check=False)
+        # GIT_SSH_COMMAND outranks any ambient ssh setting; ssh never sees the key text.
+        ssh = {name: value for name, value in os.environ.items()
+               if name != 'COMMENT_RATCHET_PUSH_KEY'} | {'GIT_SSH_COMMAND': shlex.join([
+                   'ssh', '-i', str(identity), '-o', 'IdentitiesOnly=yes',
+                   '-o', f'UserKnownHostsFile={hosts}', '-o', 'StrictHostKeyChecking=yes'])}
+        pushed = git(root, 'push', remote, f'{commit}:refs/heads/{branch}', env=ssh, check=False)
         if pushed.returncode == 0:
             print(f'pushed {commit}, the tightened {records}, to {branch}')
             return 0
-        listed = git(root, *ssh, 'ls-remote', remote, f'refs/heads/{branch}', check=False)
+        listed = git(root, 'ls-remote', remote, f'refs/heads/{branch}', env=ssh, check=False)
     finally:
         shutil.rmtree(scratch)
     refusal = pushed.stderr.strip()
