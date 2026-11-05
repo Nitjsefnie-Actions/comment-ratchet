@@ -74,15 +74,16 @@ run its PR workflow. Local subprocess tests do not replace a hosted run.
 On a default-branch push whose run passes a non-empty `push-key`, the action
 commits the tightened comment-share records to the default branch itself; in
 a repository whose workflows pass none, pull requests maintain the records.
-This repository's workflows pass no `push-key`, so its records are maintained
-by pull requests and no workflow commits or pushes them.
+This repository's `tests` workflow passes its key on a push to `main`, so the
+action commits this repository's comment-share records on its default branch
+too.
 The size baseline is checked by the size-ratchet install block in
 [size-baseline.yml](.github/workflows/size-baseline.yml): a pull request that
 shrinks, deletes or excludes a recorded file carries the tightened entry, and
-the run on main verifies the records are tight. Comment-share records ride the
-pull requests that change the tree too: a pull request whose head tree makes
-tighten change the base records carries that change, and its check names each
-entry and byte pair when it does not.
+the run on main verifies the records are tight. A pull request may keep the
+base comment-share pair of a recorded file it changes: its check names the
+entry tighten writes as a notice, and the push run on `main` commits it. Every
+other entry must match what tighten writes, and growth past a record fails.
 
 For initial adoption, generate the exact seed for the proposed head and commit
 it with the PR, because a seedless base uses the head seed under the strict
