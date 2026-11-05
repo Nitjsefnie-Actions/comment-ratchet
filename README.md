@@ -34,7 +34,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow == 'comment share' && format('comment-share-{0}', github.ref) || format('comment-share-called-{0}', github.run_id) }}
+  group: ${{ github.workflow == 'comment share' && format('comment-share-{0}', github.event_name == 'push' && format('{0}-{1}', github.ref, github.sha) || github.ref) || format('comment-share-called-{0}', github.run_id) }}
   cancel-in-progress: true
 jobs:
   comment-share:
@@ -64,7 +64,12 @@ which reads the deploy key. Omit the block and a bare `uses:` step behaves the
 same on a pull request. The steps run only on a pull request or a push to the
 repository's default branch; on any other event the block runs on, such as a
 push to `master` where `main` is the default, the job completes green without
-measuring. A called run sees the caller's event and takes the calling run's
+measuring. A standalone pull request run shares its group with that pull
+request's earlier run and replaces it. A standalone push run's group is its
+branch and commit, so the run the action's own records commit starts cancels
+neither the run that pushed it nor an earlier commit's run, running or
+pending; an older run whose records push is then refused passes (below).
+A called run sees the caller's event and takes the calling run's
 concurrency group; a caller workflow named `comment share`, in any letter
 case, would share the standalone group instead, so name it anything else. The checkout selects the
 PR's head tree, or the pushed commit; full history supplies the PR base

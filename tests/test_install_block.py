@@ -99,11 +99,12 @@ def test_install_block_shape():
     assert len(pins) == 2, pins
 
 
-def context(event, ref_type='branch', ref_name='main', default='main', workflow='comment share'):
+def context(event, ref_type='branch', ref_name='main', default='main', workflow='comment share',
+            sha='a1'):
     return {'github.event_name': event, 'github.ref_type': ref_type,
             'github.ref_name': ref_name, 'github.ref': f'refs/heads/{ref_name}',
             'github.event.repository.default_branch': default,
-            'github.workflow': workflow, 'github.run_id': '42'}
+            'github.workflow': workflow, 'github.run_id': '42', 'github.sha': sha}
 
 
 @pytest.mark.parametrize('github,environment,runs', [
@@ -124,10 +125,32 @@ def test_environment_binds_only_on_a_default_branch_push(github, environment, ru
     job = block['jobs']['comment-share']
     assert evaluate(job['environment'], github) == environment
     assert all(bool(evaluate(step['if'], github)) is runs for step in job['steps'])
-    group = evaluate(block['concurrency']['group'], github)
-    standalone = github['github.workflow'].casefold() == 'comment share'
-    assert group == (f'comment-share-{github["github.ref"]}' if standalone
-                     else 'comment-share-called-42')
+    # The standalone group's prefix is the block's own workflow name.
+    name = block['name']
+    prefix = name.replace(' ', '-')
+    if github['github.workflow'].casefold() != name.casefold():
+        want = f'{prefix}-called-{github["github.run_id"]}'
+    elif github['github.event_name'] == 'push':
+        want = f'{prefix}-{github["github.ref"]}-{github["github.sha"]}'
+    else:
+        want = f'{prefix}-{github["github.ref"]}'
+    assert evaluate(block['concurrency']['group'], github) == want
+
+
+def test_a_records_commit_s_push_run_cancels_no_earlier_commit_s_run():
+    # GitHub keeps one pending run per group even without cancel-in-progress,
+    # so only a per-commit push group keeps the records commit's run from
+    # cancelling the run that pushed it; a pull request still replaces its
+    # own older run.
+    _, block = install_block()
+    group = block['concurrency']['group']
+
+    def run(event, sha, **fields):
+        return evaluate(group, context(event, sha=sha, **fields))
+    assert run('push', 'a1') != run('push', 'b2')
+    assert run('pull_request', 'a1', ref_name='1/merge') == \
+        run('pull_request', 'b2', ref_name='1/merge')
+    assert block['concurrency']['cancel-in-progress'] == 'true'
 
 
 @pytest.mark.parametrize('require_tight,want', [('false', 0), ('true', 1)])
