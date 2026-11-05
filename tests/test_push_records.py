@@ -39,12 +39,16 @@ sys.exit(subprocess.call(['git', verb.removeprefix('git-'), os.environ['FAKE_SSH
 '''
 
 
-# Records whether each git call's environment carries the key, then runs git.
+# Records whether each git call's environment carries the key, then runs git,
+# or fails the one call FAKE_GIT_FAIL names as git does.
 FAKE_GIT = '''#!{python}
 import json, os, sys
 with open(os.environ['FAKE_GIT_LOG'], 'a') as log:
     log.write(json.dumps({{'args': sys.argv[1:],
                           'key_in_env': 'COMMENT_RATCHET_PUSH_KEY' in os.environ}}) + '\\n')
+if sys.argv[3:] == json.loads(os.environ.get('FAKE_GIT_FAIL', 'null')):
+    print('fatal: injected read failure', file=sys.stderr)
+    sys.exit(128)
 os.execv({git!r}, ['git', *sys.argv[1:]])
 '''
 
@@ -167,6 +171,25 @@ def test_a_moved_branch_passes_without_pushing(consumer):
     assert tip(origin) == newer
 
 
+def test_a_shallow_checkout_reads_a_moved_branch(consumer):
+    repo, origin, _ = consumer
+    # A second commit puts the depth-1 clone's boundary above a parent it lacks.
+    (repo / 'notes.txt').write_text('second\n')
+    sha = commit(repo, 'a second commit')
+    git(repo, 'push', '-q', str(origin), f'{sha}:refs/heads/main')
+    shallow = repo.parent / 'shallow'
+    subprocess.run(['git', 'clone', '-q', '--depth', '1', f'file://{origin}', str(shallow)], check=True)
+    assert git(shallow, 'rev-parse', '--is-shallow-repository') == 'true'
+    (repo / 'y.py').write_text('y = 1\n')
+    newer = commit(repo, 'a newer push')
+    git(repo, 'push', '-q', str(origin), f'{newer}:refs/heads/main')
+    measured, pushed = run_action(shallow, sha)
+    assert measured.returncode == 0, measured.stderr
+    assert pushed.returncode == 0, pushed.stderr
+    assert f'::notice::main moved past {sha}' in pushed.stdout
+    assert tip(origin) == newer
+
+
 @pytest.mark.parametrize('refused,want,verbs', [(False, 0, {'commit-tree', 'push'}),
                                                 (True, 1, {'commit-tree', 'push', 'fetch'})])
 def test_no_git_call_receives_the_key(consumer, refused, want, verbs):
@@ -200,6 +223,9 @@ def test_a_tip_without_github_sha_fails_naming_it(consumer):
     assert f'main is at {rewritten}, which does not contain {sha}' in pushed.stderr
     assert '::notice::' not in pushed.stdout
     assert tip(origin) == rewritten
+    # The unrelated history was read to decide, but the workspace keeps none of it.
+    kept = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', rewritten], check=False)
+    assert kept.returncode != 0
 
 
 def test_a_refusal_without_movement_fails_naming_it(consumer):
@@ -303,6 +329,29 @@ def test_an_unreadable_branch_after_a_refusal_fails(consumer):
     assert 'reading main failed' in pushed.stderr
     assert '::notice::' not in pushed.stdout
     assert tip(origin) == sha
+
+
+@pytest.mark.parametrize('call', [['rev-parse', 'FETCH_HEAD'], ['merge-base', '--is-ancestor']])
+def test_a_failed_tip_read_after_a_refusal_fails_naming_it(consumer, call):
+    repo, origin, sha = consumer
+    hook = origin / 'hooks' / 'pre-receive'
+    hook.write_text('#!/bin/sh\necho denied by the ruleset >&2\nexit 1\n')
+    hook.chmod(0o755)
+    fake = repo.parent / 'bin' / 'git'
+    fake.write_text(FAKE_GIT.format(python=sys.executable, git=shutil.which('git')))
+    fake.chmod(0o755)
+    # The branch stays at sha, so the ancestry call reads sha against itself.
+    failing = call + [sha, sha] if call[0] == 'merge-base' else call
+    measured, pushed = run_action(repo, sha, FAKE_GIT_LOG=str(repo.parent / 'git.log'),
+                                  FAKE_GIT_FAIL=json.dumps(failing))
+    assert measured.returncode == 0, measured.stderr
+    assert pushed.returncode == 1
+    assert 'Traceback' not in pushed.stderr
+    assert pushed.stderr.startswith('comment-ratchet push refused: ')
+    assert 'denied by the ruleset' in pushed.stderr
+    assert 'reading main failed: fatal: injected read failure' in pushed.stderr
+    assert '::notice::' not in pushed.stdout
+    assert not list((repo.parent / 'runner').iterdir())
 
 
 def test_a_key_without_a_step_output_fails(consumer):
