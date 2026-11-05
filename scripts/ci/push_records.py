@@ -83,7 +83,7 @@ def main() -> int:
         return 1
     tip = git(root, 'rev-parse', 'FETCH_HEAD').stdout.strip()
     contained = git(root, 'merge-base', '--is-ancestor', sha, tip, check=False).returncode == 0
-    if tip != sha and not contained:
+    if not contained:
         print(f'comment-ratchet push refused: {refusal}; {branch} is at {tip}, '
               f'which does not contain {sha}', file=sys.stderr)
         return 1
