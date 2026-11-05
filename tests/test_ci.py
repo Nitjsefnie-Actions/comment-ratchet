@@ -236,25 +236,29 @@ def test_aggregate_environment_fallback_and_precedence(monkeypatch, case, want):
         assert "'NEEDS_JSON'" in result.stderr
 
 
-@pytest.mark.parametrize('event,ref_name,environment,mode,require_tight,key', [
-    ('pull_request', '1/merge', '', 'check', 'false', ''),
-    ('push', 'main', 'main-push', 'tighten', 'true', 'deploy-key'),
-    ('push', 'other', '', 'tighten', 'true', 'deploy-key'),
-    ('workflow_dispatch', 'main', '', 'check', 'true', ''),
+@pytest.mark.parametrize('event,ref_type,ref_name,environment,mode,require_tight,key', [
+    ('pull_request', 'branch', '1/merge', '', 'check', 'false', ''),
+    ('push', 'branch', 'main', 'main-push', 'tighten', 'true', 'deploy-key'),
+    ('push', 'branch', 'other', '', 'tighten', 'true', 'deploy-key'),
+    ('push', 'tag', 'main', '', 'tighten', 'true', 'deploy-key'),
+    ('workflow_dispatch', 'branch', 'main', '', 'check', 'true', ''),
 ])
 def test_comment_share_commits_its_records_only_on_a_main_push(
-        event, ref_name, environment, mode, require_tight, key):
+        event, ref_type, ref_name, environment, mode, require_tight, key):
     from tests.test_install_block import context, evaluate, install_block
     job = workflow('tests.yml')['jobs']['comment-share']
     # A workflow_call callee would read the environment secret empty.
     assert 'runs-on' in job and 'uses' not in job
     assert job['environment'] == install_block()[1]['jobs']['comment-share']['environment']
     base = 'b0' if event == 'pull_request' else ''
-    github = {**context(event, ref_name=ref_name), 'github.event.pull_request.base.sha': base,
+    github = {**context(event, ref_type=ref_type, ref_name=ref_name), 'github.event.pull_request.base.sha': base,
               'secrets.MASTER_PUSH_DEPLOY_KEY': 'deploy-key'}
     assert evaluate(job['environment'], github) == environment
     _, guard, action = job['steps']
     assert bool(evaluate(guard['if'], github)) is (environment == 'main-push')
+    for secret in ('deploy-key', ''):
+        assert evaluate(guard['env']['COMMENT_RATCHET_PUSH_KEY_SET'],
+                        {**github, 'secrets.MASTER_PUSH_DEPLOY_KEY': secret}) is bool(secret)
     assert action['uses'] == './'
     assert {name: evaluate(value, github) for name, value in action['with'].items()} == {
         'mode': mode, 'base-ref': base or 'a1', 'require-tight': require_tight, 'push-key': key}

@@ -25,8 +25,8 @@ def install_block():
 
 
 def evaluate(expression, context):
-    """The GitHub expression subset the block uses: ==, &&, ||, (), format()."""
-    tokens = re.findall(r"'[^']*'|==|&&|\|\||[(),]|[\w.-]+", expression.strip()
+    """The GitHub expression subset the workflows use: ==, !=, &&, ||, (), format()."""
+    tokens = re.findall(r"'[^']*'|[=!]=|&&|\|\||[(),]|[\w.-]+", expression.strip()
                         .removeprefix('${{').removesuffix('}}'))
     position = 0
 
@@ -54,10 +54,10 @@ def evaluate(expression, context):
 
     def compare():
         value = primary()
-        while tokens[position:position + 1] == ['==']:
-            take()
+        while tokens[position:position + 1] in (['=='], ['!=']):
+            equal = take() == '=='
             # GitHub compares strings ignoring case.
-            value = str(value).casefold() == str(primary()).casefold()
+            value = (str(value).casefold() == str(primary()).casefold()) is equal
         return value
 
     def both():

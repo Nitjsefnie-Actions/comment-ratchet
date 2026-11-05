@@ -82,8 +82,8 @@ The size baseline is checked by the size-ratchet install block in
 shrinks, deletes or excludes a recorded file carries the tightened entry, and
 the run on main verifies the records are tight. A pull request may keep the
 base comment-share pair of a recorded file it changes: its check names the
-entry tighten writes as a notice, and the push run on `main` commits it. Every
-other entry must match what tighten writes, and growth past a record fails.
+entry tighten writes as a notice, and the push run on `main` commits it.
+Growth past a record still fails.
 
 For initial adoption, generate the exact seed for the proposed head and commit
 it with the PR, because a seedless base uses the head seed under the strict
@@ -95,8 +95,9 @@ git add .github/comment-share.json
 ```
 
 After adoption, head edits never replace the base policy for a check, and
-records never rise: a pull request lowers an entry or carries its change, or
-its check fails naming the pair.
+records never rise: a pull request lowers an entry, carries its change or keeps
+a changed file's base pair for the push run on `main` to lower, or its check
+fails naming the pair.
 
 ## Python coverage comments
 
