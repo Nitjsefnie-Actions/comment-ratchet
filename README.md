@@ -87,9 +87,10 @@ run pushes nothing. Otherwise the action commits the records file alone on
 top of `github.sha`, as `github-actions[bot]` with the message
 `ci: tighten comment-ratchet records`, and pushes it as a fast-forward of the
 default branch. A refused push passes with a notice when the default branch
-has moved past `github.sha`: the newer push's run measures again, and a
-records file is never merged or rebased. A refusal while the branch has not
-moved fails the run and names the refusal.
+has moved past `github.sha` to a tip that contains it: the newer push's run
+measures again, and a records file is never merged or rebased. A refusal while
+the branch stands at `github.sha`, or at any tip that does not contain it,
+fails the run and names the refusal and the tip.
 
 **The key.** `push-key` takes an SSH write deploy key from the environment
 secret `MASTER_PUSH_DEPLOY_KEY` in the `<default branch>-push` environment,
