@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -35,6 +36,16 @@ with open(os.environ['FAKE_SSH_LOG'], 'a') as log:
 if os.environ.get('FAKE_SSH_REFUSE') == verb:
     sys.exit(255)
 sys.exit(subprocess.call(['git', verb.removeprefix('git-'), os.environ['FAKE_SSH_REPO']]))
+'''
+
+
+# Records whether each git call's environment carries the key, then runs git.
+FAKE_GIT = '''#!{python}
+import json, os, sys
+with open(os.environ['FAKE_GIT_LOG'], 'a') as log:
+    log.write(json.dumps({{'args': sys.argv[1:],
+                          'key_in_env': 'COMMENT_RATCHET_PUSH_KEY' in os.environ}}) + '\\n')
+os.execv({git!r}, ['git', *sys.argv[1:]])
 '''
 
 
@@ -82,8 +93,10 @@ def run_action(repo, sha, key='test-key', **overrides):
                FAKE_SSH_LOG=str(repo.parent / 'ssh.log'),
                FAKE_SSH_REPO=str(repo.parent / 'origin.git'))
     env.update(overrides)
-    measured = subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo, env=env,
-                              capture_output=True, text=True, check=False)
+    # As in action.yml, the measuring step never receives the key.
+    measuring = {name: value for name, value in env.items() if name != 'COMMENT_RATCHET_PUSH_KEY'}
+    measured = subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo,
+                              env=measuring, capture_output=True, text=True, check=False)
     if measured.returncode or output.read_text() != 'changed=true\n':
         return measured, None
     pushed = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/push_records.py')],
@@ -151,6 +164,19 @@ def test_a_moved_branch_passes_without_pushing(consumer):
     assert pushed.returncode == 0, pushed.stderr
     assert f'::notice::main moved past {sha}' in pushed.stdout
     assert tip(origin) == newer
+
+
+def test_no_git_call_receives_the_key(consumer):
+    repo, origin, sha = consumer
+    fake = repo.parent / 'bin' / 'git'
+    fake.write_text(FAKE_GIT.format(python=sys.executable, git=shutil.which('git')))
+    fake.chmod(0o755)
+    log = repo.parent / 'git.log'
+    measured, pushed = run_action(repo, sha, FAKE_GIT_LOG=str(log))
+    assert pushed is not None and pushed.returncode == 0, pushed and pushed.stderr
+    calls = [json.loads(line) for line in log.read_text().splitlines()]
+    assert {'commit-tree', 'push'} <= {call['args'][2] for call in calls if call['args'][:1] == ['-C']}
+    assert [call['args'] for call in calls if call['key_in_env']] == []
 
 
 def test_a_refusal_without_movement_fails_naming_it(consumer):

@@ -100,7 +100,9 @@ out of repository secrets, which any branch's workflow can read. The job's
 `environment:` binds that environment only on a default-branch push, so a
 pull-request run binds none and the branch policy never refuses it; pull
 requests, fork pull requests included, never push. Only the push step
-receives the key; GitHub's SSH host keys are pinned from its Meta endpoint.
+receives the key, and none of its git calls inherits it in the environment;
+ssh reads it from a temporary file. GitHub's SSH host keys are pinned from its
+Meta endpoint.
 An environment secret has been observed to read empty inside a
 `workflow_call` callee, so a called run is expected to take the no-key path
 below; the block's own push run is the one that commits.
