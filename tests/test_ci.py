@@ -234,3 +234,35 @@ def test_aggregate_environment_fallback_and_precedence(monkeypatch, case, want):
         assert 'CI aggregate failed:' in result.stderr
     if case == 'unset':
         assert "'NEEDS_JSON'" in result.stderr
+
+
+@pytest.mark.parametrize('event,ref_name,environment,mode,require_tight,key', [
+    ('pull_request', '1/merge', '', 'check', 'false', ''),
+    ('push', 'main', 'main-push', 'tighten', 'true', 'deploy-key'),
+    ('push', 'other', '', 'tighten', 'true', 'deploy-key'),
+    ('workflow_dispatch', 'main', '', 'check', 'true', ''),
+])
+def test_comment_share_commits_its_records_only_on_a_main_push(
+        event, ref_name, environment, mode, require_tight, key):
+    from tests.test_install_block import context, evaluate, install_block
+    job = workflow('tests.yml')['jobs']['comment-share']
+    # A workflow_call callee would read the environment secret empty.
+    assert 'runs-on' in job and 'uses' not in job
+    assert job['environment'] == install_block()[1]['jobs']['comment-share']['environment']
+    base = 'b0' if event == 'pull_request' else ''
+    github = {**context(event, ref_name=ref_name), 'github.event.pull_request.base.sha': base,
+              'secrets.MASTER_PUSH_DEPLOY_KEY': 'deploy-key'}
+    assert evaluate(job['environment'], github) == environment
+    _, guard, action = job['steps']
+    assert bool(evaluate(guard['if'], github)) is (environment == 'main-push')
+    assert action['uses'] == './'
+    assert {name: evaluate(value, github) for name, value in action['with'].items()} == {
+        'mode': mode, 'base-ref': base or 'a1', 'require-tight': require_tight, 'push-key': key}
+
+
+@pytest.mark.parametrize('key_set,want', [('true', 0), ('false', 1), ('', 1)])
+def test_a_keyless_main_push_fails_before_the_action_runs(tmp_path, key_set, want):
+    guard = workflow('tests.yml')['jobs']['comment-share']['steps'][1]
+    result = shell(guard['run'], tmp_path, COMMENT_RATCHET_PUSH_KEY_SET=key_set)
+    assert result.returncode == want, result.stdout + result.stderr
+    assert ('MASTER_PUSH_DEPLOY_KEY reads empty' in result.stdout) is bool(want)
