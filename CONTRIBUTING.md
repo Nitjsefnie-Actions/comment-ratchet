@@ -80,7 +80,8 @@ too.
 The size baseline is checked by the size-ratchet install block in
 [size-baseline.yml](.github/workflows/size-baseline.yml): a pull request that
 shrinks, deletes or excludes a recorded file carries the tightened entry, and
-the run on main verifies the records are tight. A pull request may keep the
+the block's push run on `main` tightens the records and commits any change
+itself. A pull request may keep the
 base comment-share pair of a recorded file it changes: its check names the
 entry tighten writes as a notice, and the push run on `main` commits it.
 Growth past a record still fails.
