@@ -125,8 +125,10 @@ def test_environment_binds_only_on_a_default_branch_push(github, environment, ru
     job = block['jobs']['comment-share']
     assert evaluate(job['environment'], github) == environment
     assert all(bool(evaluate(step['if'], github)) is runs for step in job['steps'])
-    # The standalone group's prefix is the block's own workflow name.
+    # The standalone group's prefix is the block's own workflow name, the
+    # name run.py also tells a called run apart by.
     name = block['name']
+    assert name == 'comment share'
     prefix = name.replace(' ', '-')
     if github['github.workflow'].casefold() != name.casefold():
         want = f'{prefix}-called-{github["github.run_id"]}'
