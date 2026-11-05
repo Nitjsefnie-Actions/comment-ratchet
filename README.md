@@ -132,7 +132,7 @@ repository does.
 | `records` | `'.github/comment-share.json'` | Repository-relative records file; an empty path, a directory, or a path escaping the checkout fails. |
 | `mode` | `'auto'` | Event dispatch above, or exactly `check` / `tighten` to force a mode. |
 | `base-ref` | `${{ github.event.pull_request.base.sha }}` | Git revision whose records bind a check. Required for check, unused by tighten. |
-| `require-tight` | `'false'` | `'true'` fails a check whose head records differ from what tighten writes over the changed paths, and a keyless default-branch push whose records tighten changes; `'false'` leaves both to the default branch's run. Any other value fails. |
+| `require-tight` | `'false'` | `'true'` fails a check whose head records differ from what tighten writes over the changed paths, and a keyless default-branch push whose records tighten changes in the standalone `comment share` run (a called run only notes them); `'false'` leaves both to the default branch's run. Any other value fails. |
 | `push-key` | `''` | SSH write deploy key a default-branch push commits the tightened records with; empty pushes nothing. |
 
 Invalid inputs fail the run and name the input. Inputs reach the action through
