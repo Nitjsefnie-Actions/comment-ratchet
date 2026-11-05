@@ -181,6 +181,7 @@ jobs:
         with:
           mode: check
           base-ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          require-tight: 'true'
 
   # The pinned actionlint accepts the documented ./ reusable-workflow syntax;
   # zizmor's newer $/ recommendation is unsupported by that pinned parser.
