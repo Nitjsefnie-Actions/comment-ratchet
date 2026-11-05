@@ -244,18 +244,23 @@ def test_an_empty_key_names_each_loose_entry(consumer, require_tight, want):
 # A called run sees its caller's workflow name; a caller named alike in any
 # letter case is the standalone run, as the install block's concurrency group reads it.
 @pytest.mark.parametrize('workflow,require_tight,want', [
-    ('tests', 'true', 0), ('tests', 'false', 0), ('Comment Share', 'true', 1)])
+    ('tests', 'true', 0), ('tests', 'false', 0), ('comment share (push)', 'true', 0),
+    ('Comment Share', 'true', 1)])
 def test_a_called_keyless_run_leaves_loose_entries_to_the_standalone_run(
         consumer, workflow, require_tight, want):
     repo, origin, sha = consumer
-    measured, pushed = run_action(repo, sha, key='', GITHUB_WORKFLOW=workflow,
+    (repo / 'y.py').write_text('# hi\ny = 1\n')
+    write_records(repo, {'x.py': [4, 6], 'y.py': [4, 6]})
+    head = commit(repo, 'a second loose entry')
+    measured, pushed = run_action(repo, head, key='', GITHUB_WORKFLOW=workflow,
                                   COMMENT_RATCHET_REQUIRE_TIGHT=require_tight)
     assert measured.returncode == want, measured.stderr
     assert pushed is None
-    entry = '~ x.py: required [3, 6], recorded [4, 6]'
-    called = f'{entry} (a called run reads push-key empty; the standalone comment share run commits'
-    assert (f'::notice::{called}' in measured.stdout) is (want == 0)
-    assert (f'{entry} (input push-key is unset' in measured.stderr) is (want == 1)
+    for name in ('x.py', 'y.py'):
+        entry = f'~ {name}: required [3, 6], recorded [4, 6]'
+        called = f'{entry} (a called run reads push-key empty; the standalone comment share run commits'
+        assert (f'::notice::{called}' in measured.stdout) is (want == 0)
+        assert (f'{entry} (input push-key is unset' in measured.stderr) is (want == 1)
     assert '::warning::' not in measured.stdout
     assert tip(origin) == sha
 
