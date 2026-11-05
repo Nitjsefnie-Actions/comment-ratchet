@@ -38,7 +38,9 @@ def tighten_on_push(root: Path, records: str, target: int, key_set: bool,
     if status or committed == (root / records).read_bytes():
         return status
     if key_set:
-        with open(os.environ.get('GITHUB_OUTPUT', os.devnull), 'a', encoding='utf-8') as output:
+        if not os.environ.get('GITHUB_OUTPUT'):
+            raise ValueError('GITHUB_OUTPUT is unset, so the push step cannot run')
+        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
             output.write('changed=true\n')
         return 0
     lines = policy.records_diff(policy.decode_records((root / records).read_bytes()), before)
