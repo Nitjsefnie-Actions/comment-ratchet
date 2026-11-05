@@ -69,9 +69,10 @@ request's earlier run and replaces it. A standalone push run's group is its
 branch and commit, so the run the action's own records commit starts cancels
 neither the run that pushed it nor an earlier commit's run, running or
 pending; an older run whose records push is then refused passes (below).
-A called run sees the caller's event and takes the calling run's
-concurrency group; a caller workflow named `comment share`, in any letter
-case, would share the standalone group instead, so name it anything else. The checkout selects the
+A called run sees the caller's event, workflow name and run id, so its group
+is `comment-share-called-` followed by the calling run's `github.run_id`; a
+caller workflow named `comment share`, in any letter case, would share the
+standalone group instead, so name it anything else. The checkout selects the
 PR's head tree, or the pushed commit; full history supplies the PR base
 without retaining a token. The action needs a Git checkout, bash, and access
 to npm and PyPI; it sets up Python 3.15.1 and Node 24.17.0 itself. The suite
