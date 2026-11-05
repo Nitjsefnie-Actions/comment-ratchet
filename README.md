@@ -22,7 +22,7 @@ that `branches:` list. Consumers' copies are byte-identical except the step's
 `with:` block, if they change it at all. The file may also be one a
 consumer's own workflow calls as a reusable workflow: the `workflow_call`
 trigger makes that adoption an overwrite of that file too. The action
-reference is pinned to the v2.0.1 release commit.
+reference is pinned to the v3.0.0 release commit.
 
 ```yaml
 name: comment share
@@ -49,7 +49,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch)
-        uses: Nitjsefnie-Actions/comment-ratchet@fc6e1aec44a358f5e88420b3d3795a9b0bce7823 # v2.0.1
+        uses: Nitjsefnie-Actions/comment-ratchet@da2b0f7f5dbc3d202d317eea4fbc40f7cc28a3bc # v3.0.0
         with:
           target: '15'
           records: '.github/comment-share.json'
