@@ -53,7 +53,8 @@ def branch_tip(root: Path, probe: Path, remote: str, branch: str, sha: str,
     (probe / 'objects' / 'info' / 'alternates').write_text(f'{path("objects")}\n')
     if path('shallow').is_file():
         shutil.copyfile(path('shallow'), probe / 'shallow')
-    # A ref at sha lets the fetch negotiate from it rather than take the tip's whole history.
+    # A ref at sha lets the fetch negotiate from it rather than take the tip's whole
+    # history; it changes only the transfer, so no test fails without it.
     git(probe, 'update-ref', 'refs/heads/github-sha', sha)
     git(probe, 'fetch', '-q', remote, f'refs/heads/{branch}', env=env)
     tip = git(probe, 'rev-parse', 'FETCH_HEAD').stdout.strip()

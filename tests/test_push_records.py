@@ -164,11 +164,15 @@ def test_a_moved_branch_passes_without_pushing(consumer):
     newer = commit(repo, 'a newer push')
     git(repo, 'push', '-q', str(origin), f'{newer}:refs/heads/main')
     git(repo, 'checkout', '-q', sha)
+    refs = git(repo, 'for-each-ref')
     measured, pushed = run_action(repo, sha)
     assert measured.returncode == 0, measured.stderr
     assert pushed.returncode == 0, pushed.stderr
     assert f'::notice::main moved past {sha}' in pushed.stdout
     assert tip(origin) == newer
+    # Reading the tip, an object the workspace holds, leaves its refs and FETCH_HEAD alone.
+    assert git(repo, 'for-each-ref') == refs
+    assert not (repo / '.git' / 'FETCH_HEAD').exists()
 
 
 def test_a_shallow_checkout_reads_a_moved_branch(consumer):
@@ -217,15 +221,19 @@ def test_a_tip_without_github_sha_fails_naming_it(consumer):
     (other / 'z.py').write_text('z = 1\n')
     rewritten = commit(other, 'unrelated history')
     git(other, 'push', '-q', str(origin), f'+{rewritten}:refs/heads/main')
+    refs = git(repo, 'for-each-ref')
     measured, pushed = run_action(repo, sha)
     assert measured.returncode == 0, measured.stderr
     assert pushed.returncode == 1
     assert f'main is at {rewritten}, which does not contain {sha}' in pushed.stderr
     assert '::notice::' not in pushed.stdout
     assert tip(origin) == rewritten
-    # The unrelated history was read to decide, but the workspace keeps none of it.
+    # The unrelated history was read to decide, but the workspace keeps none of
+    # it: exit 1 is a missing object, where a broken probe of the repository exits 128.
     kept = subprocess.run(['git', '-C', str(repo), 'cat-file', '-e', rewritten], check=False)
-    assert kept.returncode != 0
+    assert kept.returncode == 1
+    assert git(repo, 'for-each-ref') == refs
+    assert not (repo / '.git' / 'FETCH_HEAD').exists()
 
 
 def test_a_refusal_without_movement_fails_naming_it(consumer):
