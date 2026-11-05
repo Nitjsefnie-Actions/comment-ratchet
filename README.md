@@ -64,7 +64,9 @@ which reads the deploy key. Omit the block and a bare `uses:` step behaves the
 same on a pull request. The steps run only on a pull request or a push to the
 repository's default branch; on any other event the block runs on, such as a
 push to `master` where `main` is the default, the job completes green without
-measuring. A called run sees the caller's event. The checkout selects the
+measuring. A called run sees the caller's event and takes the calling run's
+concurrency group; a caller workflow named `comment share`, in any letter
+case, would share the standalone group instead, so name it anything else. The checkout selects the
 PR's head tree, or the pushed commit; full history supplies the PR base
 without retaining a token. The action needs a Git checkout, bash, and access
 to npm and PyPI; it sets up Python 3.15.1 and Node 24.17.0 itself. The suite
@@ -99,8 +101,9 @@ out of repository secrets, which any branch's workflow can read. The job's
 pull-request run binds none and the branch policy never refuses it; pull
 requests, fork pull requests included, never push. Only the push step
 receives the key; GitHub's SSH host keys are pinned from its Meta endpoint.
-Unverified here: whether an environment secret resolves inside a called run;
-where it reads empty, the run takes the no-key path below.
+An environment secret has been observed to read empty inside a
+`workflow_call` callee, so a called run is expected to take the no-key path
+below; the block's own push run is the one that commits.
 
 **Without a key**, a default-branch push still tightens the checkout. Under
 `require-tight: 'false'`, each entry tighten changed is a `::warning::` naming
@@ -270,8 +273,9 @@ request does not change, the repair is records-only: land the entry the
 notice names, or lower an untouched record (a raising or loosening
 records-only edit fails naming the base pair). For a file the pull request
 does change, the repair is trimming the file below the target — recording is
-never a repair — or bringing it back within the effective limit and landing
-the lowered record in the same pull request when the reduction lowers one.
+never a repair — or bringing it back within the effective limit; under
+`require-tight: 'true'` the same pull request also lands the lowered record
+when the reduction lowers one.
 
 ## Contributing and security
 
