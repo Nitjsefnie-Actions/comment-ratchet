@@ -166,16 +166,22 @@ def test_a_moved_branch_passes_without_pushing(consumer):
     assert tip(origin) == newer
 
 
-def test_no_git_call_receives_the_key(consumer):
+@pytest.mark.parametrize('refused,want,verbs', [(False, 0, {'commit-tree', 'push'}),
+                                                (True, 1, {'commit-tree', 'push', 'fetch'})])
+def test_no_git_call_receives_the_key(consumer, refused, want, verbs):
     repo, origin, sha = consumer
+    if refused:
+        hook = origin / 'hooks' / 'pre-receive'
+        hook.write_text('#!/bin/sh\nexit 1\n')
+        hook.chmod(0o755)
     fake = repo.parent / 'bin' / 'git'
     fake.write_text(FAKE_GIT.format(python=sys.executable, git=shutil.which('git')))
     fake.chmod(0o755)
     log = repo.parent / 'git.log'
     measured, pushed = run_action(repo, sha, FAKE_GIT_LOG=str(log))
-    assert pushed is not None and pushed.returncode == 0, pushed and pushed.stderr
+    assert pushed is not None and pushed.returncode == want, pushed and pushed.stderr
     calls = [json.loads(line) for line in log.read_text().splitlines()]
-    assert {'commit-tree', 'push'} <= {call['args'][2] for call in calls if call['args'][:1] == ['-C']}
+    assert verbs <= {call['args'][2] for call in calls if call['args'][:1] == ['-C']}
     assert [call['args'] for call in calls if call['key_in_env']] == []
 
 
