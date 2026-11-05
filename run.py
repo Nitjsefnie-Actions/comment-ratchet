@@ -44,6 +44,12 @@ def tighten_on_push(root: Path, records: str, target: int, key_set: bool,
             output.write('changed=true\n')
         return 0
     lines = policy.records_diff(policy.decode_records((root / records).read_bytes()), before)
+    # The install block's concurrency group tells a called run apart the same way.
+    if os.environ.get('GITHUB_WORKFLOW', '').casefold() != 'comment share':
+        for line in lines:
+            print(f'::notice::{line} (a called run reads push-key empty; the standalone '
+                  'comment share run commits the tightened records)', file=sys.stdout)
+        return 0
     for line in lines:
         report = f'{line} (input push-key is unset, so this run cannot commit the tightened records)'
         print(report, file=sys.stderr)
