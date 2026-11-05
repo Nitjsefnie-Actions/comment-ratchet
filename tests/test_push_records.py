@@ -89,6 +89,7 @@ def run_action(repo, sha, key='test-key', **overrides):
                COMMENT_RATCHET_MODE='auto', COMMENT_RATCHET_RECORDS=RECORDS,
                COMMENT_RATCHET_PUSH_KEY=key,
                COMMENT_RATCHET_PUSH_KEY_SET=str(bool(key)).lower(),
+               GITHUB_WORKFLOW='comment share',
                PATH=f'{repo.parent / "bin"}{os.pathsep}{os.environ["PATH"]}',
                FAKE_SSH_LOG=str(repo.parent / 'ssh.log'),
                FAKE_SSH_REPO=str(repo.parent / 'origin.git'))
@@ -237,6 +238,25 @@ def test_an_empty_key_names_each_loose_entry(consumer, require_tight, want):
     report = '~ x.py: required [3, 6], recorded [4, 6] (input push-key is unset'
     assert report in measured.stderr
     assert (f'::warning::{report}' in measured.stdout) is (require_tight == 'false')
+    assert tip(origin) == sha
+
+
+# A called run sees its caller's workflow name; a caller named alike in any
+# letter case is the standalone run, as the install block's concurrency group reads it.
+@pytest.mark.parametrize('workflow,require_tight,want', [
+    ('tests', 'true', 0), ('tests', 'false', 0), ('Comment Share', 'true', 1)])
+def test_a_called_keyless_run_leaves_loose_entries_to_the_standalone_run(
+        consumer, workflow, require_tight, want):
+    repo, origin, sha = consumer
+    measured, pushed = run_action(repo, sha, key='', GITHUB_WORKFLOW=workflow,
+                                  COMMENT_RATCHET_REQUIRE_TIGHT=require_tight)
+    assert measured.returncode == want, measured.stderr
+    assert pushed is None
+    entry = '~ x.py: required [3, 6], recorded [4, 6]'
+    called = f'{entry} (a called run reads push-key empty; the standalone comment share run commits'
+    assert (f'::notice::{called}' in measured.stdout) is (want == 0)
+    assert (f'{entry} (input push-key is unset' in measured.stderr) is (want == 1)
+    assert '::warning::' not in measured.stdout
     assert tip(origin) == sha
 
 
