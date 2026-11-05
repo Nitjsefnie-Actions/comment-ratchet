@@ -13,66 +13,104 @@ and `comment_baseline.py`.
 Save this workflow as `.github/workflows/comment-share.yml`. It is the whole
 adoption: save the file, seed the records in the adoption pull request by
 running tighten on the proposed head (the command is under
-[Contributing](CONTRIBUTING.md#tighten-this-repositorys-records)), and no
-other workflow, step, credential or branch edit is needed. The block triggers
-only on `pull_request`, so your default branch's name appears nowhere in the
-file and no push ever starts a run. Consumers' copies are byte-identical
-except the step's `with:` block, if they change it at all. The action
+[Contributing](CONTRIBUTING.md#tighten-this-repositorys-records)), and give
+the action its deploy key (below). Its `push:` filter names both conventional
+default branches, `main` and `master`, and its steps and environment resolve
+the actual default branch at run time, so the file is the same in a `main`
+and a `master` repository; a default branch with any other name is added to
+that `branches:` list. Consumers' copies are byte-identical except the step's
+`with:` block, if they change it at all. The file may also be one a
+consumer's own workflow calls as a reusable workflow: the `workflow_call`
+trigger makes that adoption an overwrite of that file too. The action
 reference is pinned to the v2.0.1 release commit.
 
 ```yaml
 name: comment share
 on:
   pull_request:
+  push:
+    branches: [main, master]
+  workflow_call:
 permissions:
   contents: read
 concurrency:
-  group: comment-share-${{ github.ref }}
+  group: ${{ github.workflow == 'comment share' && format('comment-share-{0}', github.ref) || format('comment-share-called-{0}', github.run_id) }}
   cancel-in-progress: true
 jobs:
   comment-share:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: ${{ github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch && format('{0}-push', github.event.repository.default_branch) || '' }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: Nitjsefnie-Actions/comment-ratchet@fc6e1aec44a358f5e88420b3d3795a9b0bce7823 # v2.0.1
+      - if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch)
+        uses: Nitjsefnie-Actions/comment-ratchet@fc6e1aec44a358f5e88420b3d3795a9b0bce7823 # v2.0.1
         with:
           target: '15'
           records: '.github/comment-share.json'
           mode: 'auto'
           base-ref: ${{ github.event.pull_request.base.sha }}
+          require-tight: 'false'
+          push-key: ${{ secrets.MASTER_PUSH_DEPLOY_KEY }}
 ```
 
-The `with:` block shows **every input with its default**. Omit it and a bare
-`uses:` step behaves the same on a pull request. The checkout selects the
-PR's head tree; full history supplies the PR base without retaining a token.
-The action needs a Git checkout, bash, and access to npm and PyPI; it sets up
-Python 3.15.1 and Node 24.17.0 itself. The suite is configured for Ubuntu and
-macOS runners. Windows is outside this action's tested runner set.
+The `with:` block shows **every input with its default**, except `push-key`,
+which reads the deploy key. Omit the block and a bare `uses:` step behaves the
+same on a pull request. The steps run only on a pull request or a push to the
+repository's default branch; on any other event the block runs on, such as a
+push to `master` where `main` is the default, the job completes green without
+measuring. A called run sees the caller's event. The checkout selects the
+PR's head tree, or the pushed commit; full history supplies the PR base
+without retaining a token. The action needs a Git checkout, bash, and access
+to npm and PyPI; it sets up Python 3.15.1 and Node 24.17.0 itself. The suite
+is configured for Ubuntu and macOS runners. Windows is outside this action's
+tested runner set.
 
 `auto` checks on `pull_request` and tightens on a `push` to the repository's
-actual default branch, though the install block never sees those pushes: it
-triggers only pull requests. Other events, including pushes to another
-branch, fail closed and name `mode` and the event. Force `check` or `tighten`
-for a manual workflow. A forced check must supply `base-ref` when the event
-has no PR base SHA.
+actual default branch. Other events, including pushes to another branch that
+reach the action without the steps' `if:`, fail closed and name `mode` and
+the event. Force `check` or `tighten` for a manual workflow. A forced check
+must supply `base-ref` when the event has no PR base SHA.
 
-**Records are maintained by pull requests.** Tighten writes the records file
-into the checkout only when you run it yourself, to seed or repair records;
-no workflow commits or pushes them. A pull request whose head tree makes
-tighten change the base records — comment bytes fewer at an equal or lower
-share, a deleted file, a file at or under the target — carries that change:
-its check compares the records at HEAD with what tighten would write over the
-changed paths and fails naming each entry and the byte pair it should hold,
-so one pull request can land the repair. If your repository delivers records
-from a push job today, delete that arm; a push workflow that also lands other
-records files keeps those.
-A consumer that wants the check inside a required aggregate keeps its own
-aggregate job and points it at this action, as this repository does.
+**The default branch commits its own records.** On a default-branch push with
+a non-empty `push-key`, the action first requires the checkout's `HEAD` to be
+`github.sha`, failing without a push otherwise, then tightens over that tree.
+When tighten changes nothing, nothing is pushed, so the records commit's own
+run pushes nothing. Otherwise the action commits the records file alone on
+top of `github.sha`, as `github-actions[bot]` with the message
+`ci: tighten comment-ratchet records`, and pushes it as a fast-forward of the
+default branch. A refused push passes with a notice when the default branch
+has moved past `github.sha`: the newer push's run measures again, and a
+records file is never merged or rebased. A refusal while the branch has not
+moved fails the run and names the refusal.
+
+**The key.** `push-key` takes an SSH write deploy key from the environment
+secret `MASTER_PUSH_DEPLOY_KEY` in the `<default branch>-push` environment,
+whose deployments are limited to the default branch. The key is the
+default-branch ruleset's bypass actor (`DeployKey`): the records commit
+carries no checks yet, and the built-in token cannot be a bypass actor. Keep it
+out of repository secrets, which any branch's workflow can read. The job's
+`environment:` binds that environment only on a default-branch push, so a
+pull-request run binds none and the branch policy never refuses it; pull
+requests, fork pull requests included, never push. Only the push step
+receives the key; GitHub's SSH host keys are pinned from its Meta endpoint.
+Unverified here: whether an environment secret resolves inside a called run;
+where it reads empty, the run takes the no-key path below.
+
+**Without a key**, a default-branch push still tightens the checkout. Under
+`require-tight: 'false'`, each entry tighten changed is a `::warning::` naming
+`push-key` as unset; under `'true'`, those entries fail the run.
+
+A consumer that delivers comment-share records from its own workflow today
+deletes that delivery and its tests; a push workflow that also lands other
+records files keeps those. A consumer that wants the check inside a required
+aggregate keeps its own aggregate job and points it at this action, as this
+repository does.
 
 ## Inputs
 
@@ -82,6 +120,8 @@ aggregate job and points it at this action, as this repository does.
 | `records` | `'.github/comment-share.json'` | Repository-relative records file; an empty path, a directory, or a path escaping the checkout fails. |
 | `mode` | `'auto'` | Event dispatch above, or exactly `check` / `tighten` to force a mode. |
 | `base-ref` | `${{ github.event.pull_request.base.sha }}` | Git revision whose records bind a check. Required for check, unused by tighten. |
+| `require-tight` | `'false'` | `'true'` fails a check whose head records differ from what tighten writes over the changed paths, and a keyless default-branch push whose records tighten changes; `'false'` leaves both to the default branch's run. Any other value fails. |
+| `push-key` | `''` | SSH write deploy key a default-branch push commits the tightened records with; empty pushes nothing. |
 
 Invalid inputs fail the run and name the input. Inputs reach the action through
 environment variables. They are never interpolated into shell programs.
@@ -153,7 +193,10 @@ their recorded pair byte-for-byte; a deleted file's entry is dropped; a
 changed file at or under the target drops its entry; and a changed recorded
 file keeps its pair unless tighten lowers it (fewer comment bytes at a share
 not above the record). Each differing entry fails as a `+`/`~`/`-` diff
-report naming the path and the byte pair it should hold. Unrecorded or
+report naming the path and the byte pair it should hold. Under
+`require-tight: 'false'`, the default, a changed recorded file may instead
+keep its base pair: that entry is a notice naming what tighten writes, and the
+default branch's run lands it. Unrecorded or
 over-record files are judged only where the pull request changes them: a
 changed recorded file fails when it exceeds the effective limit below on
 both dimensions, or when it exceeds its committed record on both dimensions;
@@ -207,7 +250,8 @@ files or files at or below target. Tighten never raises an existing record.
 Code-only additions, removals or replacements leave the records file
 byte-identical unless a file graduates to or below target, when its entry is
 dropped, or an unrecorded file moves above target, when its entry is added.
-Tighten writes changes for the caller to commit.
+Tighten writes changes into the checkout; on a default-branch push with a
+`push-key`, the action commits them itself.
 
 **Tighten reports, it never fails and never raises.** A recorded file sitting
 above its record on both dimensions — comment bytes and share — is printed to

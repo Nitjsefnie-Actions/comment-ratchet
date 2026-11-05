@@ -368,3 +368,32 @@ def test_a_conflicted_deletion_passes_until_resolved(repo):
     result = cli(repo, '--base-ref', base)
     assert result.returncode == 1
     assert DELETED in result.stderr
+
+
+@pytest.mark.parametrize('head_source,head_records,want,message', [
+    ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {'x.py': [40, 100]}, 0,
+     '::notice::x.py: recorded [40, 100], tighten writes [38, 98]'),
+    (None, {'x.py': [40, 100]}, 0, '::notice::x.py: recorded [40, 100], tighten writes no entry'),
+    ('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n', {'x.py': [40, 100]}, 1,
+     'x.py: (45, 105) exceeds its record [40, 100]'),
+    ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {'x.py': [41, 100]}, 1,
+     '~ x.py: required [38, 98], recorded [41, 100]'),
+    ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {}, 1, '+ x.py: required [38, 98]'),
+], ids=['lowered-kept', 'deleted-kept', 'growth', 'loosened', 'dropped'])
+def test_without_require_tight_a_pr_keeps_base_pairs_and_still_fails_growth(
+        repo, head_source, head_records, want, message):
+    from tests.test_action import action
+    source = repo / 'x.py'
+    # (40, 100), above the target.
+    source.write_text('#' + 'c' * 39 + '\n' + 'x' * 60 + '\n')
+    write_records(repo, {'x.py': [40, 100]})
+    base = commit(repo, 'record policy')
+    if head_source is None:
+        source.unlink()
+    else:
+        source.write_text(head_source)
+    write_records(repo, head_records)
+    commit(repo, 'pr head')
+    result = action(repo, COMMENT_RATCHET_BASE_REF=base, COMMENT_RATCHET_REQUIRE_TIGHT='false')
+    assert result.returncode == want, result.stderr
+    assert message in (result.stdout if want == 0 else result.stderr)

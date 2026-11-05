@@ -1,52 +1,134 @@
 """The README install block, asserted and run as written."""
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+import yaml
 
 from tests.test_action import metadata_env
 from tests.test_ci_comment_baseline import commit, git, init_repo, write_records
 
 ROOT = Path(__file__).resolve().parents[1]
+GATE = ('github.event_name == \'pull_request\' || (github.event_name == \'push\' && '
+        'github.ref_type == \'branch\' && github.ref_name == github.event.repository.default_branch)')
+
 
 def install_block():
-    import re
-    import yaml
     text = (ROOT / 'README.md').read_text()
     fence = re.search(r'```yaml\n(.*?)```', text, re.S)
     assert fence, 'the README install block is the first yaml fence'
     return fence.group(1), yaml.load(fence.group(1), Loader=yaml.BaseLoader)
 
 
-def test_install_block_triggers_only_pull_requests():
-    import re
+def evaluate(expression, context):
+    """The GitHub expression subset the block uses: ==, &&, ||, (), format()."""
+    tokens = re.findall(r"'[^']*'|==|&&|\|\||[(),]|[\w.-]+", expression.strip()
+                        .removeprefix('${{').removesuffix('}}'))
+    position = 0
+
+    def take():
+        nonlocal position
+        position += 1
+        return tokens[position - 1]
+
+    def primary():
+        token = take()
+        if token == '(':
+            value = either()
+            assert take() == ')'
+            return value
+        if token.startswith("'"):
+            return token[1:-1]
+        if tokens[position:position + 1] == ['(']:
+            take()
+            args = [either()]
+            while take() == ',':
+                args.append(either())
+            assert token == 'format'
+            return args[0].format(*args[1:])
+        return context.get(token, '')
+
+    def compare():
+        value = primary()
+        while tokens[position:position + 1] == ['==']:
+            take()
+            value = value == primary()
+        return value
+
+    def both():
+        value = compare()
+        while tokens[position:position + 1] == ['&&']:
+            take()
+            right = compare()
+            value = right if value else value
+        return value
+
+    def either():
+        value = both()
+        while tokens[position:position + 1] == ['||']:
+            take()
+            right = both()
+            value = value if value else right
+        return value
+
+    result = either()
+    assert position == len(tokens), expression
+    return result
+
+
+def test_install_block_shape():
     raw, block = install_block()
-    assert list(block['on']) == ['pull_request']
-    assert not block['on']['pull_request']
-    # Saved unedited, so no branch literal may appear.
-    for literal in ('push', 'main', 'branches'):
-        assert literal not in raw
-    checkout = block['jobs']['comment-share']['steps'][0]
-    assert checkout['with']['ref'] == '${{ github.event.pull_request.head.sha }}'
-    assert '||' not in checkout['with']['ref']
-    import yaml as metadata
-    inputs = metadata.safe_load((ROOT / 'action.yml').read_text())['inputs']
-    action_step = block['jobs']['comment-share']['steps'][1]
-    assert action_step['with'] == {name: str(item['default'])
-                                   for name, item in inputs.items()}
-    for step in block['jobs']['comment-share']['steps']:
-        assert 'uses' not in step or step['uses'].count('@') == 1
+    assert block['on'] == {'pull_request': '', 'push': {'branches': ['main', 'master']},
+                           'workflow_call': ''}
+    job = block['jobs']['comment-share']
+    checkout, action_step = job['steps']
+    assert checkout['with']['ref'] == '${{ github.event.pull_request.head.sha || github.sha }}'
+    assert checkout['if'] == action_step['if'] == GATE
+    inputs = yaml.safe_load((ROOT / 'action.yml').read_text())['inputs']
+    assert action_step['with'] == {
+        **{name: str(item['default']) for name, item in inputs.items()},
+        'push-key': '${{ secrets.MASTER_PUSH_DEPLOY_KEY }}'}
     # The YAML parser strips pin comments: match the raw fence, and never a
     # sha or version.
-    import re as raw_re
-    pins = raw_re.findall(r'@[0-9a-f]{40} # v\d+\.\d+\.\d+', raw)
+    pins = re.findall(r'@[0-9a-f]{40} # v\d+\.\d+\.\d+', raw)
     assert len(pins) == 2, pins
 
 
-def test_install_block_check_on_a_master_default_consumer(tmp_path):
-    from tests.test_action import metadata_env
-    from tests.test_ci_comment_baseline import init_repo, commit, git, write_records
+def context(event, ref_type='branch', ref_name='main', default='main', workflow='comment share'):
+    return {'github.event_name': event, 'github.ref_type': ref_type,
+            'github.ref_name': ref_name, 'github.ref': f'refs/heads/{ref_name}',
+            'github.event.repository.default_branch': default,
+            'github.workflow': workflow, 'github.run_id': '42'}
+
+
+@pytest.mark.parametrize('github,environment,runs', [
+    (context('pull_request', ref_name='1/merge'), '', True),
+    (context('push'), 'main-push', True),
+    (context('push', ref_name='master', default='master'), 'master-push', True),
+    (context('push', ref_name='master'), '', False),
+    (context('push', ref_type='tag'), '', False),
+    (context('workflow_dispatch'), '', False),
+    # A called run sees its caller's event under the caller's workflow name.
+    (context('push', workflow='tests'), 'main-push', True),
+    (context('pull_request', ref_name='1/merge', workflow='tests'), '', True),
+], ids=['pull-request', 'main-push', 'master-push', 'other-branch', 'tag',
+        'dispatch', 'called-push', 'called-pull-request'])
+def test_environment_binds_only_on_a_default_branch_push(github, environment, runs):
+    _, block = install_block()
+    job = block['jobs']['comment-share']
+    assert evaluate(job['environment'], github) == environment
+    assert all(bool(evaluate(step['if'], github)) is runs for step in job['steps'])
+    group = evaluate(block['concurrency']['group'], github)
+    assert group == ('comment-share-called-42' if github['github.workflow'] != 'comment share'
+                     else f'comment-share-{github["github.ref"]}')
+
+
+@pytest.mark.parametrize('require_tight,want', [('false', 0), ('true', 1)])
+def test_install_block_check_on_a_master_default_consumer(tmp_path, require_tight, want):
     _, block = install_block()
     raw_inputs = block['jobs']['comment-share']['steps'][1]['with']
     repo = tmp_path / 'consumer'
@@ -58,23 +140,30 @@ def test_install_block_check_on_a_master_default_consumer(tmp_path):
     write_records(repo, {'a.py': [40, 100]})
     base = commit(repo, 'seed a file above the target')
     git(repo, 'branch', '-M', 'master')
-    # Resolve the with: expressions as the runner would.
-    inputs = {name: (base if value == '${{ github.event.pull_request.base.sha }}' else value)
-              for name, value in raw_inputs.items()}
-    # The run step's env, from the block's own with:.
+    # Resolve the with: expressions as a pull-request run would: no
+    # environment is bound, so the key reads empty.
+    resolved = {'${{ github.event.pull_request.base.sha }}': base,
+                '${{ secrets.MASTER_PUSH_DEPLOY_KEY }}': ''}
+    inputs = {name: resolved.get(value, value) for name, value in raw_inputs.items()}
+    inputs['require-tight'] = require_tight
     env = {**metadata_env(repo, inputs=inputs),
            'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_REF': 'refs/pull/1/merge',
            'COMMENT_RATCHET_DEFAULT_BRANCH': 'master'}
+    assert env['COMMENT_RATCHET_PUSH_KEY_SET'] == 'false'
 
     def run():
         return subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')],
                               cwd=repo, env=env, capture_output=True, text=True)
-    # Removing comment bytes at a lower share must carry (38, 98).
+    # Removing comment bytes at a lower share lowers the record to (38, 98).
     source.write_text('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n')
     commit(repo, 'pr head removes comment bytes')
     result = run()
-    assert result.returncode == 1
-    assert '~ a.py: required [38, 98], recorded [40, 100]' in result.stderr
+    assert result.returncode == want, result.stderr
+    if want:
+        assert '~ a.py: required [38, 98], recorded [40, 100]' in result.stderr
+    else:
+        assert ('::notice::a.py: recorded [40, 100], tighten writes [38, 98]'
+                in result.stdout)
     write_records(repo, {'a.py': [38, 98]})
     commit(repo, 'carry the lowered record')
     assert run().returncode == 0

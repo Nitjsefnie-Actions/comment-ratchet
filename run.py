@@ -17,21 +17,57 @@ def env(name: str, default: str) -> str:
     return os.environ.get(name, default) if value is None else value
 
 
+def flag(name: str, input_name: str, default: str) -> bool:
+    value = os.environ.get('COMMENT_RATCHET_' + name, default)
+    if value not in ('true', 'false'):
+        raise ValueError(f'input {input_name} must be true or false, got {value!r}')
+    return value == 'true'
+
+
+def tighten_on_push(root: Path, records: str, target: int, key_set: bool,
+                    require_tight: bool) -> int:
+    """Tighten a default-branch push and hand a change to the push step."""
+    if key_set:
+        head = policy.git(root, 'rev-parse', 'HEAD').stdout.decode().strip()
+        if head != os.environ.get('GITHUB_SHA', ''):
+            raise ValueError(f'checkout HEAD {head} is not github.sha '
+                             f'{os.environ.get("GITHUB_SHA", "")!r}; nothing pushed')
+    before = policy.records_at(root, 'HEAD', records) or {}
+    status = policy.run(root, records, 'tighten', target)
+    committed = policy.git(root, 'show', f'HEAD:{records}', check=False).stdout
+    if status or committed == (root / records).read_bytes():
+        return status
+    if key_set:
+        with open(os.environ.get('GITHUB_OUTPUT', os.devnull), 'a', encoding='utf-8') as output:
+            output.write('changed=true\n')
+        return 0
+    lines = policy.records_diff(policy.decode_records((root / records).read_bytes()), before)
+    for line in lines:
+        report = f'{line} (input push-key is unset, so this run cannot commit the tightened records)'
+        print(report, file=sys.stderr)
+        if not require_tight:
+            print(f'::warning::{report}', file=sys.stdout)
+    return 1 if require_tight and lines else 0
+
+
 def main() -> int:
     try:
         root = Path(os.environ.get('GITHUB_WORKSPACE', os.getcwd())).resolve()
         target = policy.target_input(env('TARGET', '15'))
         records = policy.records_input(env('RECORDS', '.github/comment-share.json'), root)
+        require_tight = flag('REQUIRE_TIGHT', 'require-tight', 'false')
+        key_set = flag('PUSH_KEY_SET', 'push-key', 'false')
         mode = env('MODE', 'auto')
         if mode not in ('auto', 'check', 'tighten'):
             raise ValueError(f'input mode must be auto, check or tighten, got {mode!r}')
+        event = os.environ.get('GITHUB_EVENT_NAME', '')
+        default = env('DEFAULT_BRANCH', '')
+        pushed = (event == 'push' and bool(default)
+                  and os.environ.get('GITHUB_REF') == f'refs/heads/{default}')
         if mode == 'auto':
-            event = os.environ.get('GITHUB_EVENT_NAME', '')
-            default = env('DEFAULT_BRANCH', '')
             if event == 'pull_request':
                 mode = 'check'
-            elif (event == 'push' and default
-                  and os.environ.get('GITHUB_REF') == f'refs/heads/{default}'):
+            elif pushed:
                 mode = 'tighten'
             else:
                 raise ValueError(f'input mode=auto cannot handle event {event!r} '
@@ -40,7 +76,9 @@ def main() -> int:
         if sys.argv[1:] == ['--validate-only']:
             return 0
         os.environ['COMMENT_RATCHET_ESPREE_DIR'] = str(ACTION_ROOT / 'node_modules')
-        return policy.run(root, records, mode, target, base)
+        if mode == 'tighten' and pushed:
+            return tighten_on_push(root, records, target, key_set, require_tight)
+        return policy.run(root, records, mode, target, base, require_tight)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f'comment-ratchet failed: {error}', file=sys.stderr)
         return 1

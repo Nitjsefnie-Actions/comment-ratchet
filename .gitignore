@@ -34,6 +34,7 @@ scripts/ci/*
 !scripts/ci/ts_comment_ranges.mjs
 !scripts/ci/js_comment_tokens.mjs
 !scripts/ci/aggregate_gate.py
+!scripts/ci/push_records.py
 !tests/
 tests/*
 !tests/__init__.py
@@ -44,6 +45,7 @@ tests/*
 !tests/test_require_tight.py
 !tests/test_merge_repair.py
 !tests/test_install_block.py
+!tests/test_push_records.py
 !tests/run.sh
 !.github/comment-share.json
 !.github/size-baseline.json

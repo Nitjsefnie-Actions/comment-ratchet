@@ -210,7 +210,8 @@ def write_records(path: Path, data: dict[str, list[int]]) -> None:
     temporary.replace(path)
 
 
-def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') -> int:
+def run(root: Path, records: str, mode: str, target: int, base_ref: str = '',
+        require_tight: bool = True) -> int:
     limit = (target, 100)
     if mode == 'tighten':
         path = root / records
@@ -295,6 +296,17 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '') ->
                                if path in changed},
                               {path: counts for path, counts in measured.items()
                                if path in changed and path in baseline}, limit))
+    # Without require-tight a changed path may keep its base pair; the
+    # default branch's run lowers or drops it after the merge.
+    stale = set() if require_tight else {
+        path for path in changed if path in baseline
+        and head.get(path) == baseline[path] != required.get(path)}
+    for path in sorted(stale):
+        notice = (f'{path}: recorded {baseline[path]}, tighten writes '
+                  f'{required.get(path, "no entry")}; the default branch run lands it')
+        print(notice, file=sys.stderr)
+        print(f'::notice::{notice}', file=sys.stdout)
+        required[path] = baseline[path]
     # The branch-point tolerance is for unchanged paths only: a changed
     # path's required entry is always reported missing.
     report = records_diff(required, head, optional, accepted,

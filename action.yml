@@ -17,6 +17,14 @@ inputs:
     description: Git revision whose records bind a check.
     required: false
     default: ${{ github.event.pull_request.base.sha }}
+  require-tight:
+    description: true fails a check whose head records differ from what tighten writes, and a default-branch push with loose records and no push-key; false leaves both to the default branch.
+    required: false
+    default: 'false'
+  push-key:
+    description: SSH write deploy key; a default-branch push commits the tightened records with it.
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -29,6 +37,7 @@ runs:
         # Consumer package files must not turn on a dependency cache.
         package-manager-cache: false
     - name: Measure and apply the ratchet
+      id: ratchet
       shell: bash
       # Inputs are data: none becomes shell program text. -I keeps consumer
       # modules and PYTHONPATH out of Python's import search path.
@@ -37,6 +46,8 @@ runs:
         COMMENT_RATCHET_RECORDS: ${{ inputs.records }}
         COMMENT_RATCHET_MODE: ${{ inputs.mode }}
         COMMENT_RATCHET_BASE_REF: ${{ inputs.base-ref }}
+        COMMENT_RATCHET_REQUIRE_TIGHT: ${{ inputs.require-tight }}
+        COMMENT_RATCHET_PUSH_KEY_SET: ${{ inputs.push-key != '' }}
         COMMENT_RATCHET_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         python3 -I "$GITHUB_ACTION_PATH/run.py" --validate-only
@@ -47,3 +58,12 @@ runs:
         "$runtime_dir/bin/python" -I -m pip install --require-hashes --only-binary=:all: --no-binary=PyYAML --no-build-isolation -r "$GITHUB_ACTION_PATH/requirements.txt"
         npm ci --prefix "$GITHUB_ACTION_PATH" --ignore-scripts --no-audit --no-fund
         "$runtime_dir/bin/python" -I "$GITHUB_ACTION_PATH/run.py"
+    - name: Push the tightened records
+      if: steps.ratchet.outputs.changed == 'true'
+      shell: bash
+      # The key reaches this step alone, never the measuring one.
+      env:
+        COMMENT_RATCHET_PUSH_KEY: ${{ inputs.push-key }}
+        COMMENT_RATCHET_RECORDS: ${{ inputs.records }}
+        COMMENT_RATCHET_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: python3 -I "$GITHUB_ACTION_PATH/scripts/ci/push_records.py"
