@@ -51,6 +51,8 @@ def main() -> int:
         print(f'comment-ratchet push failed: {", ".join(missing)} unset', file=sys.stderr)
         return 1
     key, records, branch, sha, repository = (os.environ[name] for name in names)
+    # No git call, push included, inherits the key; only ssh reads it, from a file.
+    del os.environ['COMMENT_RATCHET_PUSH_KEY']
     remote = f'git@github.com:{repository}.git'
     try:
         commit = records_commit(root, sha, records)
@@ -64,10 +66,9 @@ def main() -> int:
             handle.write(key.strip() + '\n')
         hosts.write_text(''.join(f'github.com {host}\n' for host in HOST_KEYS))
         # GIT_SSH_COMMAND outranks any ambient ssh setting; ssh never sees the key text.
-        ssh = {name: value for name, value in os.environ.items()
-               if name != 'COMMENT_RATCHET_PUSH_KEY'} | {'GIT_SSH_COMMAND': shlex.join([
-                   'ssh', '-i', str(identity), '-o', 'IdentitiesOnly=yes',
-                   '-o', f'UserKnownHostsFile={hosts}', '-o', 'StrictHostKeyChecking=yes'])}
+        ssh = {**os.environ, 'GIT_SSH_COMMAND': shlex.join([
+            'ssh', '-i', str(identity), '-o', 'IdentitiesOnly=yes',
+            '-o', f'UserKnownHostsFile={hosts}', '-o', 'StrictHostKeyChecking=yes'])}
         pushed = git(root, 'push', remote, f'{commit}:refs/heads/{branch}', env=ssh, check=False)
         if pushed.returncode == 0:
             print(f'pushed {commit}, the tightened {records}, to {branch}')
