@@ -42,6 +42,27 @@ def records_commit(root: Path, sha: str, records: str) -> str:
                env={**os.environ, **BOT}).stdout.strip()
 
 
+def branch_tip(root: Path, probe: Path, remote: str, branch: str, sha: str,
+               env: dict[str, str]) -> tuple[str, bool]:
+    """The branch's tip and whether it contains sha, read through a scratch repository
+    that borrows the workspace's objects, so the fetch adds none to the workspace."""
+    def path(name: str) -> Path:
+        return Path(git(root, 'rev-parse', '--path-format=absolute', '--git-path', name).stdout.strip())
+    probe.mkdir()
+    git(probe, 'init', '-q', '--bare')
+    (probe / 'objects' / 'info' / 'alternates').write_text(f'{path("objects")}\n')
+    if path('shallow').is_file():
+        shutil.copyfile(path('shallow'), probe / 'shallow')
+    # A ref at sha lets the fetch negotiate from it rather than take the tip's whole history.
+    git(probe, 'update-ref', 'refs/heads/github-sha', sha)
+    git(probe, 'fetch', '-q', remote, f'refs/heads/{branch}', env=env)
+    tip = git(probe, 'rev-parse', 'FETCH_HEAD').stdout.strip()
+    ancestry = git(probe, 'merge-base', '--is-ancestor', sha, tip, check=False)
+    if ancestry.returncode > 1:
+        raise subprocess.CalledProcessError(ancestry.returncode, ancestry.args, stderr=ancestry.stderr)
+    return tip, ancestry.returncode == 0
+
+
 def main() -> int:
     root = Path(os.environ.get('GITHUB_WORKSPACE', os.getcwd())).resolve()
     names = ('COMMENT_RATCHET_PUSH_KEY', 'COMMENT_RATCHET_RECORDS',
@@ -73,16 +94,17 @@ def main() -> int:
         if pushed.returncode == 0:
             print(f'pushed {commit}, the tightened {records}, to {branch}')
             return 0
-        fetched = git(root, 'fetch', remote, f'refs/heads/{branch}', env=ssh, check=False)
+        refusal = pushed.stderr.strip()
+        try:
+            tip, contained = branch_tip(root, scratch / 'probe', remote, branch, sha, ssh)
+        except (OSError, subprocess.SubprocessError) as error:
+            read_error = (error.stderr if isinstance(error, subprocess.CalledProcessError)
+                          else str(error)).strip()
+            print(f'comment-ratchet push refused: {refusal}; reading {branch} failed: '
+                  f'{read_error}', file=sys.stderr)
+            return 1
     finally:
         shutil.rmtree(scratch)
-    refusal = pushed.stderr.strip()
-    if fetched.returncode:
-        print(f'comment-ratchet push refused: {refusal}; reading {branch} failed: '
-              f'{fetched.stderr.strip()}', file=sys.stderr)
-        return 1
-    tip = git(root, 'rev-parse', 'FETCH_HEAD').stdout.strip()
-    contained = git(root, 'merge-base', '--is-ancestor', sha, tip, check=False).returncode == 0
     if not contained:
         print(f'comment-ratchet push refused: {refusal}; {branch} is at {tip}, '
               f'which does not contain {sha}', file=sys.stderr)
