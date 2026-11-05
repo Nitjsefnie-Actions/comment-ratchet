@@ -73,16 +73,21 @@ def main() -> int:
         if pushed.returncode == 0:
             print(f'pushed {commit}, the tightened {records}, to {branch}')
             return 0
-        listed = git(root, 'ls-remote', remote, f'refs/heads/{branch}', env=ssh, check=False)
+        fetched = git(root, 'fetch', remote, f'refs/heads/{branch}', env=ssh, check=False)
     finally:
         shutil.rmtree(scratch)
     refusal = pushed.stderr.strip()
-    if listed.returncode:
+    if fetched.returncode:
         print(f'comment-ratchet push refused: {refusal}; reading {branch} failed: '
-              f'{listed.stderr.strip()}', file=sys.stderr)
+              f'{fetched.stderr.strip()}', file=sys.stderr)
         return 1
-    tip = listed.stdout.split()[:1]
-    if tip != [sha]:
+    tip = git(root, 'rev-parse', 'FETCH_HEAD').stdout.strip()
+    contained = git(root, 'merge-base', '--is-ancestor', sha, tip, check=False).returncode == 0
+    if tip != sha and not contained:
+        print(f'comment-ratchet push refused: {refusal}; {branch} is at {tip}, '
+              f'which does not contain {sha}', file=sys.stderr)
+        return 1
+    if tip != sha:
         # The newer push's own run measures again; a records file is never merged.
         print(f'::notice::{branch} moved past {sha} while this run measured; '
               'nothing pushed, the newer run tightens its own tree')

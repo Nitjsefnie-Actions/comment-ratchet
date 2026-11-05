@@ -179,6 +179,22 @@ def test_no_git_call_receives_the_key(consumer):
     assert [call['args'] for call in calls if call['key_in_env']] == []
 
 
+def test_a_tip_without_github_sha_fails_naming_it(consumer):
+    repo, origin, sha = consumer
+    other = repo.parent / 'other'
+    other.mkdir()
+    init_repo(other)
+    (other / 'z.py').write_text('z = 1\n')
+    rewritten = commit(other, 'unrelated history')
+    git(other, 'push', '-q', str(origin), f'+{rewritten}:refs/heads/main')
+    measured, pushed = run_action(repo, sha)
+    assert measured.returncode == 0, measured.stderr
+    assert pushed.returncode == 1
+    assert f'main is at {rewritten}, which does not contain {sha}' in pushed.stderr
+    assert '::notice::' not in pushed.stdout
+    assert tip(origin) == rewritten
+
+
 def test_a_refusal_without_movement_fails_naming_it(consumer):
     repo, origin, sha = consumer
     hook = origin / 'hooks' / 'pre-receive'
