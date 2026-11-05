@@ -92,7 +92,9 @@ measures again, and a records file is never merged or rebased. A refusal while
 the branch stands at `github.sha`, or at any tip that does not contain it,
 fails the run and names the refusal and the tip. A branch that cannot be read
 after the refusal, a deleted one included, fails the run naming the refusal
-and the read error.
+and the read error. The tip is fetched into a scratch repository that borrows
+the checkout's objects, so reading it adds nothing to the checkout's objects
+or refs and leaves its `FETCH_HEAD` alone.
 
 **The key.** `push-key` takes an SSH write deploy key from the environment
 secret `MASTER_PUSH_DEPLOY_KEY` in the `<default branch>-push` environment,
