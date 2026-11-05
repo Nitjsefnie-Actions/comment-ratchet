@@ -230,3 +230,11 @@ def test_an_unreadable_branch_after_a_refusal_fails(consumer):
     assert 'reading main failed' in pushed.stderr
     assert '::notice::' not in pushed.stdout
     assert tip(origin) == sha
+
+
+def test_a_key_without_a_step_output_fails(consumer):
+    repo, origin, sha = consumer
+    measured, pushed = run_action(repo, sha, GITHUB_OUTPUT='')
+    assert measured.returncode == 1
+    assert 'GITHUB_OUTPUT is unset' in measured.stderr
+    assert pushed is None and tip(origin) == sha
