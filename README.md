@@ -110,7 +110,11 @@ An environment secret has been observed to read empty inside a
 `workflow_call` callee, so a called run is expected to take the no-key path
 below; the block's own push run is the one that commits.
 
-**Without a key**, a default-branch push still tightens the checkout. Under
+**Without a key**, a default-branch push still tightens the checkout. A
+called run, whose workflow name is not `comment share` in any letter case (the
+test the concurrency group uses), never fails on the entries tighten changed,
+whatever `require-tight` says: each is a `::notice::` saying the standalone
+`comment share` run commits it. In the standalone run, under
 `require-tight: 'false'`, each entry tighten changed is a `::warning::` naming
 `push-key` as unset; under `'true'`, those entries fail the run.
 
