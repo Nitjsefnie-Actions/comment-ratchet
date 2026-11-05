@@ -71,7 +71,11 @@ run its PR workflow. Local subprocess tests do not replace a hosted run.
 
 ## Tighten this repository's records
 
-Records are maintained by pull requests; no workflow commits or pushes them.
+On a default-branch push whose run passes a `push-key`, the action commits
+the tightened comment-share records to the default branch itself; in a
+repository whose workflows pass none, pull requests maintain the records.
+This repository's workflows pass no `push-key`, so its records are maintained
+by pull requests and no workflow commits or pushes them.
 The size baseline is checked by the size-ratchet install block in
 [size-baseline.yml](.github/workflows/size-baseline.yml): a pull request that
 shrinks, deletes or excludes a recorded file carries the tightened entry, and
