@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BARE = {name: None for name in (
     'COMMENT_RATCHET_TARGET', 'COMMENT_RATCHET_RECORDS', 'COMMENT_RATCHET_MODE',
     'COMMENT_RATCHET_BASE_REF', 'COMMENT_RATCHET_DEFAULT_BRANCH',
+    'COMMENT_RATCHET_REQUIRE_TIGHT', 'COMMENT_RATCHET_PUSH_KEY_SET',
     'TARGET', 'RECORDS', 'MODE', 'BASE_REF', 'DEFAULT_BRANCH',
 )}
 
@@ -48,8 +49,11 @@ def metadata_env(repo, inputs=None):
     env = {}
     for env_key, expression in step['env'].items():
         ref = expression[4:-3]
+        # A key's presence crosses into this step only as a boolean.
+        ref, presence = ref.removesuffix(" != ''"), ref.endswith(" != ''")
         value = inputs.get(ref[7:]) if ref.startswith('inputs.') else contexts[ref]
-        env[env_key] = str(defaults[ref[7:]] if value is None else value)
+        value = str(defaults[ref[7:]] if value is None else value)
+        env[env_key] = str(value != '').lower() if presence else value
     return env
 
 
@@ -65,6 +69,8 @@ def metadata_env(repo, inputs=None):
     ('COMMENT_RATCHET_RECORDS', 'a/../policy.json'), ('COMMENT_RATCHET_RECORDS', '.'),
     ('COMMENT_RATCHET_BASE_REF', ''), ('COMMENT_RATCHET_BASE_REF', '--upload-pack=evil'),
     ('COMMENT_RATCHET_BASE_REF', 'bad\nref'),
+    ('COMMENT_RATCHET_REQUIRE_TIGHT', 'yes'), ('COMMENT_RATCHET_REQUIRE_TIGHT', ''),
+    ('COMMENT_RATCHET_REQUIRE_TIGHT', 'True'),
 ])
 def test_invalid_input_names_the_input(repo, name, value):
     result = action(repo, **{name: value})
