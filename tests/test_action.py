@@ -42,7 +42,8 @@ def metadata_env(repo, inputs=None):
     from ruamel.yaml import YAML
     metadata = YAML(typ='safe', pure=True).load(ROOT / 'action.yml')
     contexts = {'github.event.pull_request.base.sha': git(repo, 'rev-parse', 'HEAD'),
-                'github.event.repository.default_branch': 'main'}
+                'github.event.repository.default_branch': 'main',
+                'job.workflow_ref': ''}
     defaults = {name: contexts.get(str(item['default'])[4:-3], item['default'])
                 for name, item in metadata['inputs'].items()}
     step = next(step for step in metadata['runs']['steps'] if 'run' in step)
