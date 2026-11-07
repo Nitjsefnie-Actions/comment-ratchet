@@ -48,7 +48,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: audit-${{ github.event.pull_request.number || github.ref }}
+  # Called, github is the caller's context, so a per-run group leaves
+  # cancelling to the caller's own group.
+  group: ${{ github.workflow == 'audit' && format('audit-{0}', github.ref) || format('audit-called-{0}', github.run_id) }}
   cancel-in-progress: true
 
 jobs:

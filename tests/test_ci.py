@@ -270,3 +270,26 @@ def test_a_keyless_main_push_fails_before_the_action_runs(tmp_path, key_set, wan
     result = shell(guard['run'], tmp_path, COMMENT_RATCHET_PUSH_KEY_SET=key_set)
     assert result.returncode == want, result.stdout + result.stderr
     assert ('MASTER_PUSH_DEPLOY_KEY reads empty' in result.stdout) is bool(want)
+
+
+def test_a_main_push_run_cancels_no_job_of_an_earlier_main_push_run():
+    from tests.test_install_block import context, evaluate
+    tests = workflow('tests.yml')
+    callees = [job['uses'].removeprefix('./.github/workflows/').split(' ')[0]
+               for job in tests['jobs'].values() if 'uses' in job]
+    assert sorted(callees) == ['audit.yml', 'codeql.yml', 'secrets.yml']
+
+    def groups(event, sha, run_id, **fields):
+        import re
+        github = {**context(event, sha=sha, workflow=tests['name'], **fields), 'github.run_id': run_id}
+        return [re.sub(r'\$\{\{(.*?)\}\}', lambda match: str(evaluate(match[1], github)),
+                       config['concurrency']['group'])
+                for config in [tests] + [workflow(name) for name in callees]]
+    pushed, records = groups('push', 'a1', '1'), groups('push', 'b2', '2')
+    # One run's groups are distinct, and none is shared with the next run.
+    assert len(set(pushed + records)) == 2 * len(pushed), (pushed, records)
+    # A pull request's newer run still cancels its older run, callees included.
+    older, newer = groups('pull_request', 'a1', '1', ref_name='1/merge'), groups(
+        'pull_request', 'b2', '2', ref_name='1/merge')
+    assert older[0] == newer[0]
+    assert tests['concurrency']['cancel-in-progress'] == 'true'
