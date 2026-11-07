@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts' / 'ci'))
 
 ROOT = Path(__file__).resolve().parents[1]
 RECORDS = '.github/comment-share.json'
+STANDALONE = 'owner/consumer/.github/workflows/comment-share.yml@refs/heads/main'
+CALLER = 'owner/consumer/.github/workflows/tests.yml@refs/heads/main'
 # Records each call, then serves git@github.com:owner/consumer.git from the
 # local bare repository.
 FAKE_SSH = '''#!{python}
@@ -93,7 +95,8 @@ def run_action(repo, sha, key='test-key', **overrides):
                COMMENT_RATCHET_MODE='auto', COMMENT_RATCHET_RECORDS=RECORDS,
                COMMENT_RATCHET_PUSH_KEY=key,
                COMMENT_RATCHET_PUSH_KEY_SET=str(bool(key)).lower(),
-               GITHUB_WORKFLOW='comment share',
+               GITHUB_WORKFLOW='comment share', GITHUB_WORKFLOW_REF=STANDALONE,
+               COMMENT_RATCHET_JOB_WORKFLOW_REF=STANDALONE,
                PATH=f'{repo.parent / "bin"}{os.pathsep}{os.environ["PATH"]}',
                FAKE_SSH_LOG=str(repo.parent / 'ssh.log'),
                FAKE_SSH_REPO=str(repo.parent / 'origin.git'))
@@ -120,6 +123,7 @@ def test_the_key_reaches_only_the_gated_push_step():
     assert [step['if'] for step in pushing] == ["steps.ratchet.outputs.changed == 'true'"]
     assert steps.index(measuring) < steps.index(pushing[0])
     assert measuring['env']['COMMENT_RATCHET_PUSH_KEY_SET'] == "${{ inputs.push-key != '' }}"
+    assert measuring['env']['COMMENT_RATCHET_JOB_WORKFLOW_REF'] == '${{ job.workflow_ref }}'
     leaked = [step for step in steps if step not in pushing
               and 'inputs.push-key }}' in str(step)]
     assert not leaked
@@ -275,27 +279,34 @@ def test_an_empty_key_names_each_loose_entry(consumer, require_tight, want):
     assert tip(origin) == sha
 
 
-# A called run sees its caller's workflow name; a caller named alike in any
-# letter case is the standalone run, as the install block's concurrency group reads it.
-@pytest.mark.parametrize('workflow,require_tight,want', [
-    ('tests', 'true', 0), ('tests', 'false', 0), ('comment share (push)', 'true', 0),
-    ('Comment Share', 'true', 1)])
-def test_a_called_keyless_run_leaves_loose_entries_to_the_standalone_run(
-        consumer, workflow, require_tight, want):
+# A called job's workflow_ref names the reusable file while github.workflow_ref
+# names the caller's; the workflow name decides nothing, and an unknown job ref
+# is a plain step.
+@pytest.mark.parametrize('workflow,job_ref,require_tight,called', [
+    ('tests', CALLER, 'true', False), ('tests', CALLER, 'false', False),
+    ('tests', '', 'true', False), ('tests', STANDALONE, 'true', True),
+    ('tests', STANDALONE, 'false', True), ('Comment Share', STANDALONE, 'true', True)],
+    ids=['plain-step', 'plain-step-loose', 'unknown-job-ref', 'called', 'called-loose',
+         'caller-named-alike'])
+def test_only_a_called_keyless_run_leaves_loose_entries_to_the_standalone_run(
+        consumer, workflow, job_ref, require_tight, called):
     repo, origin, sha = consumer
     (repo / 'y.py').write_text('# hi\ny = 1\n')
     write_records(repo, {'x.py': [4, 6], 'y.py': [4, 6]})
     head = commit(repo, 'a second loose entry')
     measured, pushed = run_action(repo, head, key='', GITHUB_WORKFLOW=workflow,
+                                  GITHUB_WORKFLOW_REF=CALLER,
+                                  COMMENT_RATCHET_JOB_WORKFLOW_REF=job_ref,
                                   COMMENT_RATCHET_REQUIRE_TIGHT=require_tight)
-    assert measured.returncode == want, measured.stderr
+    assert measured.returncode == (not called and require_tight == 'true'), measured.stderr
     assert pushed is None
     for name in ('x.py', 'y.py'):
         entry = f'~ {name}: required [3, 6], recorded [4, 6]'
-        called = f'{entry} (a called run reads push-key empty; the standalone comment share run commits'
-        assert (f'::notice::{called}' in measured.stdout) is (want == 0)
-        assert (f'{entry} (input push-key is unset' in measured.stderr) is (want == 1)
-    assert '::warning::' not in measured.stdout
+        notice = f'{entry} (a called run reads push-key empty; the standalone comment share run commits'
+        unset = f'{entry} (input push-key is unset, so this run cannot commit the tightened records)'
+        assert (f'::notice::{notice}' in measured.stdout) is called
+        assert (unset in measured.stderr) is not called
+        assert (f'::warning::{unset}' in measured.stdout) is (not called and require_tight == 'false')
     assert tip(origin) == sha
 
 

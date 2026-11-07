@@ -44,8 +44,9 @@ def tighten_on_push(root: Path, records: str, target: int, key_set: bool,
             output.write('changed=true\n')
         return 0
     lines = policy.records_diff(policy.decode_records((root / records).read_bytes()), before)
-    # The install block's concurrency group tells a called run apart the same way.
-    if os.environ.get('GITHUB_WORKFLOW', '').casefold() != 'comment share':
+    # A called job's own workflow file differs from the caller's, whatever either is named.
+    job_workflow = os.environ.get('COMMENT_RATCHET_JOB_WORKFLOW_REF', '')
+    if job_workflow and job_workflow != os.environ.get('GITHUB_WORKFLOW_REF', ''):
         for line in lines:
             print(f'::notice::{line} (a called run reads push-key empty; the standalone '
                   'comment share run commits the tightened records)', file=sys.stdout)
