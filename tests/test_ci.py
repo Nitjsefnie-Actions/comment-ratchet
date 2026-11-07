@@ -45,8 +45,8 @@ def test_aggregate_bad_payload_fails(payload):
 
 
 def workflow(name):
-    import yaml
-    return yaml.load((ROOT / '.github/workflows' / name).read_text(), Loader=yaml.BaseLoader)
+    from ruamel.yaml import YAML
+    return YAML(typ='base', pure=True).load(ROOT / '.github/workflows' / name)
 
 
 def condition(expression, *, successful=True, cancelled=False, **contexts):

@@ -49,8 +49,7 @@ toolchain into a venv; use the committed npm lockfile:
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-python3 -m pip install --require-hashes --only-binary=:all: -r requirements-build.txt
-python3 -m pip install --require-hashes --only-binary=:all: --no-binary=PyYAML --no-build-isolation -r requirements-test.txt
+python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
 npm ci --ignore-scripts --no-audit --no-fund
 tests/run.sh
 shellcheck tests/run.sh

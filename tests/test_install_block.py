@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
+from ruamel.yaml import YAML
 
 from tests.test_action import metadata_env
 from tests.test_ci_comment_baseline import commit, git, init_repo, write_records
@@ -21,7 +21,7 @@ def install_block():
     text = (ROOT / 'README.md').read_text()
     fence = re.search(r'```yaml\n(.*?)```', text, re.S)
     assert fence, 'the README install block is the first yaml fence'
-    return fence.group(1), yaml.load(fence.group(1), Loader=yaml.BaseLoader)
+    return fence.group(1), YAML(typ='base', pure=True).load(fence.group(1))
 
 
 def evaluate(expression, context):
@@ -89,7 +89,7 @@ def test_install_block_shape():
     checkout, action_step = job['steps']
     assert checkout['with']['ref'] == '${{ github.event.pull_request.head.sha || github.sha }}'
     assert checkout['if'] == action_step['if'] == GATE
-    inputs = yaml.safe_load((ROOT / 'action.yml').read_text())['inputs']
+    inputs = YAML(typ='safe', pure=True).load(ROOT / 'action.yml')['inputs']
     assert action_step['with'] == {
         **{name: str(item['default']) for name, item in inputs.items()},
         'push-key': '${{ secrets.MASTER_PUSH_DEPLOY_KEY }}'}
