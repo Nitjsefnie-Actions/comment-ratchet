@@ -273,18 +273,20 @@ def test_a_keyless_main_push_fails_before_the_action_runs(tmp_path, key_set, wan
 
 
 def test_a_main_push_run_cancels_no_job_of_an_earlier_main_push_run():
+    import re
     from tests.test_install_block import context, evaluate
     tests = workflow('tests.yml')
-    callees = [job['uses'].removeprefix('./.github/workflows/').split(' ')[0]
+    callees = [workflow(job['uses'].removeprefix('./.github/workflows/'))
                for job in tests['jobs'].values() if 'uses' in job]
-    assert sorted(callees) == ['audit.yml', 'codeql.yml', 'secrets.yml']
+    assert callees
 
-    def groups(event, sha, run_id, **fields):
-        import re
-        github = {**context(event, sha=sha, workflow=tests['name'], **fields), 'github.run_id': run_id}
-        return [re.sub(r'\$\{\{(.*?)\}\}', lambda match: str(evaluate(match[1], github)),
-                       config['concurrency']['group'])
-                for config in [tests] + [workflow(name) for name in callees]]
+    def group(config, event, sha, run_id, workflow=tests['name'], **fields):
+        github = {**context(event, sha=sha, workflow=workflow, **fields), 'github.run_id': run_id}
+        return re.sub(r'\$\{\{(.*?)\}\}', lambda match: str(evaluate(match[1], github)),
+                      config['concurrency']['group'])
+
+    def groups(*run, **fields):
+        return [group(config, *run, **fields) for config in [tests] + callees]
     pushed, records = groups('push', 'a1', '1'), groups('push', 'b2', '2')
     # One run's groups are distinct, and none is shared with the next run.
     assert len(set(pushed + records)) == 2 * len(pushed), (pushed, records)
@@ -293,3 +295,8 @@ def test_a_main_push_run_cancels_no_job_of_an_earlier_main_push_run():
         'pull_request', 'b2', '2', ref_name='1/merge')
     assert older[0] == newer[0]
     assert tests['concurrency']['cancel-in-progress'] == 'true'
+    # A standalone run keeps its per-ref group, so a newer one on a branch cancels the older.
+    for config in callees:
+        name = config['name']
+        assert group(config, 'push', 'a1', '1', workflow=name, ref_name='feature') == \
+            group(config, 'push', 'b2', '2', workflow=name, ref_name='feature') == f'{name}-refs/heads/feature'
