@@ -177,11 +177,9 @@ run with the filename. Fix or rewrite that source before retrying the gate.
 The action parses source as data. Python imports, JavaScript/TypeScript helpers,
 requirements and the npm lockfile all come from the action's own directory;
 consumer modules and package install scripts are not executed. Espree and TypeScript install
-with `npm ci` against committed integrity hashes; PyYAML installs from exact
-version and SHA-256 pins, from source on CPython 3.15 until upstream ships
-wheels, with `pip install --require-hashes` in an
-isolated venv. That source build uses a hash-pinned setuptools without build
-isolation, so no build dependency installs unchecked. Consumer `PYTHONPATH` is excluded.
+with `npm ci` against committed integrity hashes; ruamel.yaml installs from an
+exact version and SHA-256 pin, wheel only, with `pip install --require-hashes`
+in an isolated venv. Consumer `PYTHONPATH` is excluded.
 
 ## Ratchet and records
 

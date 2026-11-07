@@ -10,7 +10,7 @@
 # already watches.
 #
 # Why deliberately NOT hash-pinned, unlike requirements.txt beside it
-# (zizmor and PyYAML, installed with --require-hashes by actionlint.yml):
+# (zizmor and ruamel.yaml, installed with --require-hashes by actionlint.yml):
 # pip-audit needs its own runtime dependencies, so hash-pinning it would pin
 # its whole transitive tree — and the fresh transitives are exactly the
 # subject this gate audits. Recorded trade-off: a transitive release can turn

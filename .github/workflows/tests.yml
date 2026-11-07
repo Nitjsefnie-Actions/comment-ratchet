@@ -58,8 +58,7 @@ jobs:
         # --require-hashes pins artifacts as well as versions. npm ci takes
         # the committed lockfile and verifies its integrity fields.
         run: |
-          python3 -m pip install --require-hashes --only-binary=:all: -r requirements-build.txt
-          python3 -m pip install --require-hashes --only-binary=:all: --no-binary=PyYAML --no-build-isolation -r requirements-test.txt
+          python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
           npm ci --ignore-scripts --no-audit --no-fund
       - name: Run the regression suite
         # Measure exactly one cell so the figure names one reproducible

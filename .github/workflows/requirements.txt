@@ -1,5 +1,5 @@
 # The workflow linter runs before other gates, so verify its artifact hashes.
-# PyYAML is also needed to expose composite steps to actionlint; reuse the
+# ruamel.yaml is also needed to expose composite steps to actionlint; reuse the
 # action's platform-complete runtime manifest rather than a second pin.
 -r ../../requirements.txt
 

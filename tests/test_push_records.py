@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-import yaml
+from ruamel.yaml import YAML
 
 from tests.test_ci_comment_baseline import commit, git, init_repo, write_records
 
@@ -114,7 +114,7 @@ def tip(origin):
 
 
 def test_the_key_reaches_only_the_gated_push_step():
-    steps = yaml.safe_load((ROOT / 'action.yml').read_text())['runs']['steps']
+    steps = YAML(typ='safe', pure=True).load(ROOT / 'action.yml')['runs']['steps']
     measuring = next(step for step in steps if step.get('id') == 'ratchet')
     pushing = [step for step in steps if 'inputs.push-key }}' in str(step.get('env'))]
     assert [step['if'] for step in pushing] == ["steps.ratchet.outputs.changed == 'true'"]

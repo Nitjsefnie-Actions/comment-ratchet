@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from yaml.tokens import ScalarToken
+    from ruamel.yaml.tokens import ScalarToken
 
 ROOT = Path(__file__).resolve().parents[2]
 SUFFIXES = {'.py': 'python', '.js': 'javascript', '.jsx': 'javascript',
@@ -376,11 +376,11 @@ def yaml_block(text: str, token: ScalarToken, key_column: int) -> int:
 
 
 def yaml_comments(text: str) -> int:
-    yaml = importlib.import_module('yaml')
-    token_types = importlib.import_module('yaml.tokens')
+    yaml = importlib.import_module('ruamel.yaml')
+    token_types = importlib.import_module('ruamel.yaml.tokens')
 
     try:
-        tokens = list(yaml.scan(text, Loader=yaml.SafeLoader))
+        tokens = list(yaml.YAML(typ='safe', pure=True).scan(text))
     except yaml.YAMLError as error:
         raise MeasurementError(f'YAML tokenization failed: {error}') from error
     count = end = 0

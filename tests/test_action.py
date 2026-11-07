@@ -39,8 +39,8 @@ def metadata_env(repo, inputs=None):
     through the metadata's own env mapping.
     """
     inputs = inputs or {}
-    import yaml
-    metadata = yaml.safe_load((ROOT / 'action.yml').read_text())
+    from ruamel.yaml import YAML
+    metadata = YAML(typ='safe', pure=True).load(ROOT / 'action.yml')
     contexts = {'github.event.pull_request.base.sha': git(repo, 'rev-parse', 'HEAD'),
                 'github.event.repository.default_branch': 'main'}
     defaults = {name: contexts.get(str(item['default'])[4:-3], item['default'])
@@ -125,7 +125,7 @@ def test_input_text_never_executes(repo):
 def test_consumer_code_is_not_imported_or_executed(repo):
     marker = repo / 'executed'
     evil = f'from pathlib import Path\nPath({str(marker)!r}).touch()\n'
-    for name in ('yaml.py', 'comment_share.py', 'sitecustomize.py', 'usercustomize.py'):
+    for name in ('ruamel.py', 'comment_share.py', 'sitecustomize.py', 'usercustomize.py'):
         (repo / name).write_text(evil)
     (repo / 'package.json').write_text(json.dumps({'scripts': {'preinstall': 'touch executed'}}))
     (repo / 'a.yaml').write_text('# hi\na: 1\n')
