@@ -194,8 +194,8 @@ jobs:
           require-tight: ${{ github.event_name == 'pull_request' && 'false' || 'true' }}
           push-key: ${{ github.event_name == 'push' && secrets.MASTER_PUSH_DEPLOY_KEY || '' }}
 
-  # The pinned actionlint accepts the documented ./ reusable-workflow syntax;
-  # zizmor's newer $/ recommendation is unsupported by that pinned parser.
+  # These calls keep the documented ./ reusable-workflow syntax rather than
+  # the newer $/ form zizmor's self-repository audit recommends.
   codeql:
     uses: ./.github/workflows/codeql.yml # zizmor: ignore[self-repository]
     permissions:
