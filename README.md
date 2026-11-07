@@ -119,12 +119,15 @@ An environment secret has been observed to read empty inside a
 below; the block's own push run is the one that commits.
 
 **Without a key**, a default-branch push still tightens the checkout. A
-called run, whose workflow name is not `comment share` in any letter case (the
-test the concurrency group uses), never fails on the entries tighten changed,
-whatever `require-tight` says: each is a `::notice::` saying the standalone
-`comment share` run commits it. In the standalone run, under
-`require-tight: 'false'`, each entry tighten changed is a `::warning::` naming
-`push-key` as unset; under `'true'`, those entries fail the run.
+called run, a job in a `workflow_call` callee, whose `job.workflow_ref` names
+the callee's file while `github.workflow_ref` names the caller's, never fails
+on the entries tighten changed, whatever `require-tight` says: each is a
+`::notice::` saying the standalone `comment share` run commits it. Any other
+run, a plain `uses:` step in a workflow of any name included, is told apart by
+those refs, never by a workflow name; under `require-tight: 'false'` each
+entry tighten changed is a `::warning::` naming `push-key` as unset, and under
+`'true'` those entries fail the run. Where `job.workflow_ref` reads empty,
+every run takes that second path.
 
 A consumer that delivers comment-share records from its own workflow today
 deletes that delivery and its tests; a push workflow that also lands other
@@ -140,7 +143,7 @@ repository does.
 | `records` | `'.github/comment-share.json'` | Repository-relative records file; an empty path, a directory, or a path escaping the checkout fails. |
 | `mode` | `'auto'` | Event dispatch above, or exactly `check` / `tighten` to force a mode. |
 | `base-ref` | `${{ github.event.pull_request.base.sha }}` | Git revision whose records bind a check. Required for check, unused by tighten. |
-| `require-tight` | `'false'` | `'true'` fails a check whose head records differ from what tighten writes over the changed paths, and a keyless default-branch push whose records tighten changes in the standalone `comment share` run (a called run only notes them); `'false'` leaves both to the default branch's run. Any other value fails. |
+| `require-tight` | `'false'` | `'true'` fails a check whose head records differ from what tighten writes over the changed paths, and a keyless default-branch push whose records tighten changes in any run but a `workflow_call` one (a called run only notes them); `'false'` leaves both to the default branch's run. Any other value fails. |
 | `push-key` | `''` | SSH write deploy key a default-branch push commits the tightened records with; empty pushes nothing. |
 
 Invalid inputs fail the run and name the input. Inputs reach the action through
