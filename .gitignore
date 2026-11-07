@@ -39,6 +39,7 @@ scripts/ci/*
 tests/*
 !tests/__init__.py
 !tests/test_ci_comment_share.py
+!tests/test_ci_comment_share_ts7.py
 !tests/test_ci_comment_baseline.py
 !tests/test_action.py
 !tests/test_ci.py
