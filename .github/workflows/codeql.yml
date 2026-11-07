@@ -37,8 +37,8 @@ on:
 permissions: {}
 
 concurrency:
-  # Called, github is the caller's context, so a per-run group leaves
-  # cancelling to the caller's own group.
+  # When called, github is the caller's context: a per-run group leaves
+  # cancelling to the caller's group.
   group: ${{ github.workflow == 'codeql' && format('codeql-{0}', github.ref) || format('codeql-called-{0}', github.run_id) }}
   cancel-in-progress: true
 
