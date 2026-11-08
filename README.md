@@ -75,9 +75,9 @@ caller workflow named `comment share`, in any letter case, would share the
 standalone group instead, so name it anything else. The checkout selects the
 PR's head tree, or the pushed commit; full history supplies the PR base
 without retaining a token. The action needs a Git checkout, bash, and access
-to npm and PyPI; it sets up Python 3.15.1 and Node 24.17.0 itself. The suite
-is configured for Ubuntu and macOS runners. Windows is outside this action's
-tested runner set.
+to npm and PyPI; it sets up Python 3.15 (the patch release follows the runner
+image) and Node 24.17.0 itself. The suite is configured for Ubuntu and macOS
+runners. Windows is outside this action's tested runner set.
 
 `auto` checks on `pull_request` and tightens on a `push` to the repository's
 actual default branch. Other events, including pushes to another branch that
