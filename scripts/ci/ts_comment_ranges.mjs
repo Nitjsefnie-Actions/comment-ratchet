@@ -3,32 +3,50 @@ import { createRequire } from 'node:module';
 
 try {
   const require = createRequire(import.meta.url);
-  const ts = require('../../node_modules/typescript');
+  const ast = require('typescript/ast');
+  const sync = require('typescript/sync');
   const files = JSON.parse(readFileSync(0, 'utf8'));
+  const api = new sync.API();
+  // One program gates every parse diagnostic, fail-closed for .d.ts too.
+  const program = api.createProgram(files, { noResolve: true, noLib: true });
+  // A name the Go side normalizes (a backslash in a POSIX filename) still
+  // resolves through getSourceFile, so require each file in the program's
+  // own enumeration: a resolved lookup can be a different file than measured.
+  const programFiles = new Set(program.getSourceFileNames().map(String));
+  for (const file of files) {
+    if (!programFiles.has(file)) {
+      throw new Error(`${file}: the compiler did not parse this file`);
+    }
+  }
+  const allDiagnostics = program.getSyntacticDiagnostics();
   const comments = files.map((file) => {
     try {
       const source = readFileSync(file, 'utf8');
-      const kind = file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-      const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
-      if (parsed.parseDiagnostics.length) {
-        throw new Error(parsed.parseDiagnostics.map((diagnostic) =>
-          ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n')).join('\n'));
+      // 7.1 accepts a BOM-then-shebang where 5.9.3 rejected the file.
+      if (source.charCodeAt(0) === 0xfeff && source.charCodeAt(1) === 0x23
+          && source.charCodeAt(2) === 0x21) {
+        throw new Error(`'#!' can only be used at the start of a file.`);
       }
+      const diagnostics = allDiagnostics.filter((d) => d.fileName === file);
+      if (diagnostics.length) {
+        throw new Error(diagnostics.map((d) => d.text).join('\n'));
+      }
+      const kind = file.endsWith('.tsx') ? ast.ScriptKind.TSX : ast.ScriptKind.TS;
+      const parsed = api.createSourceFile(file, source, { scriptKind: kind }).sourceFile;
       const spans = [];
       function visit(node) {
         switch (node.kind) {
-          case ts.SyntaxKind.StringLiteral:
-          case ts.SyntaxKind.RegularExpressionLiteral:
-          case ts.SyntaxKind.NoSubstitutionTemplateLiteral:
-          case ts.SyntaxKind.TemplateHead:
-          case ts.SyntaxKind.TemplateMiddle:
-          case ts.SyntaxKind.TemplateTail:
-          case ts.SyntaxKind.JsxText:
-            // JSX text has no leading trivia: // and /* belong to the text.
-            spans.push([node.kind === ts.SyntaxKind.JsxText ? node.pos : node.getStart(parsed), node.end]);
+          case ast.SyntaxKind.StringLiteral:
+          case ast.SyntaxKind.RegularExpressionLiteral:
+          case ast.SyntaxKind.NoSubstitutionTemplateLiteral:
+          case ast.SyntaxKind.TemplateHead:
+          case ast.SyntaxKind.TemplateMiddle:
+          case ast.SyntaxKind.TemplateTail:
+          case ast.SyntaxKind.JsxText:
+            spans.push([node.kind === ast.SyntaxKind.JsxText ? node.pos : node.getStart(), node.end]);
             return;
           default:
-            ts.forEachChild(node, visit);
+            node.forEachChild(visit);
         }
       }
       visit(parsed);
@@ -40,15 +58,16 @@ try {
         end = finish;
       }
       parts.push(source.slice(end));
-      // Mask opaque syntax at the same UTF-16 offsets so the scanner never
-      // mistakes literal contents for trivia, including regex and JSX text.
-      const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, parts.join(''));
+      const scanner = ast.createScanner(false, ast.LanguageVariant.Standard, parts.join(''));
       const ranges = [];
-      for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-        if (token === ts.SyntaxKind.SingleLineCommentTrivia
-            || token === ts.SyntaxKind.MultiLineCommentTrivia
-            || token === ts.SyntaxKind.ShebangTrivia) {
-          ranges.push(source.slice(scanner.getTokenPos(), scanner.getTextPos()));
+      for (let token = scanner.scan(); token !== ast.SyntaxKind.EndOfFile; token = scanner.scan()) {
+        // 7.1 scans a shebang as Unknown where 5.9.3 emitted ShebangTrivia.
+        const isShebang = token === ast.SyntaxKind.Unknown
+          && scanner.getTokenText().startsWith('#!');
+        if (isShebang
+            || token === ast.SyntaxKind.SingleLineCommentTrivia
+            || token === ast.SyntaxKind.MultiLineCommentTrivia) {
+          ranges.push(source.slice(scanner.getTokenStart(), scanner.getTokenEnd()));
         }
       }
       return ranges;
