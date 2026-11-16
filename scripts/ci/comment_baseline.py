@@ -220,7 +220,7 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '',
         updated = tightened(baseline, measured, limit)
         # A recorded file above its record on both dimensions is reported,
         # never failed and never raised: the loose entry stays until a pull
-        # request's repair lands it (issue 69).
+        # request's repair lands it.
         for path_name, counts in sorted(measured.items()):
             record = baseline.get(path_name)
             if record is not None and above(counts, record) and counts[0] > record[0]:
@@ -341,7 +341,7 @@ def run(root: Path, records: str, mode: str, target: int, base_ref: str = '',
         print(f'{path}: {counts} exceeds its record {baseline[path]}', file=sys.stderr)
     if over_record:
         failed = True
-    # A changed unrecorded file above the target fails, as in v1: the
+    # A changed unrecorded file above the target fails: the
     # repair is trimming the file, never recording it.
     unrecorded = {path: counts for path, counts in measured.items()
                   if path in changed and path not in baseline
