@@ -201,7 +201,7 @@ def test_changed_unrecorded_above_target_fails_until_trimmed(repo):
     write_records(repo, {'x.py': [3, 6]})
     base = commit(repo, 'base policy')
     # A changed unrecorded file above the target fails naming the file and
-    # its pair, exactly as in v1; the repair is trimming, never recording.
+    # its pair; the repair is trimming, never recording.
     (repo / 'new.sh').write_text('# yes\n')
     commit(repo, 'pr adds a file above the target')
     unrecorded = cli(repo, '--base-ref', base)

@@ -259,10 +259,10 @@ replay: a branch cut before the base adopted the file, which adds the
 identical file and later deletes it, passes, yet `git rebase` onto the base
 replays the deletion onto the base's copy, leaving no records file (an add
 commit holding only that file is dropped as already upstream). In a hosted
-test on 2026-11-01, github.com's rebase merge refused a pull request whose
-add commit held only that file (`405 Base branch was modified`), so the
-exposed route is a local rebase pushed straight to the default branch: land
-pull requests through the pull request, not by pushing a local rebase.
+test, github.com's rebase merge refused a pull request whose add commit held
+only that file (`405 Base branch was modified`), so the exposed route is a
+local rebase pushed straight to the default branch: land pull requests
+through the pull request, not by pushing a local rebase.
 
 **Tighten** seeds an absent records file in one run. For existing records, it
 rewrites a pair only when measured comment bytes are fewer and the measured
