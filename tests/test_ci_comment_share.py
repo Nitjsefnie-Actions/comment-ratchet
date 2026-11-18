@@ -500,16 +500,14 @@ def test_sql_plain_continuation_keeps_backslash_literal(source, want, tmp_path):
 
 
 BAD_TS = [
-    'const = 1;', 'let x="open', '/* open', 'let x=`open',
-    'let x=/[/', 'function f( {',
+    'const = 1;', 'let x="open', '/* open', 'let x=`open', 'let x=/[/', 'function f( {',
+    '\ufeff#!/usr/bin/env node\n// c\nlet x=1;\n',
 ]
 BAD_SQL = [
     "select 'open", 'select "open', 'select $$open', 'select $tag$open',
     'select $tag$open$TAG$', '/* open', '/* outer /* inner */', '/* outer /* inner',
-    "select 'a\\'-- c\n'",
-    "select E'a\\'", "select e'a\\'",
-    "SELECT E'a'\n'\\'", "SELECT e'a'\n'\\'",
-    "SELECT E'a'\n'\\'; --real\n", "SELECT e'a'\n'\\'; --real\n",
+    "select 'a\\'-- c\n'", "select E'a\\'", "select e'a\\'",
+    "SELECT E'a'\n'\\'", "SELECT e'a'\n'\\'", "SELECT E'a'\n'\\'; --real\n", "SELECT e'a'\n'\\'; --real\n",
     "SELECT E'a' --gap\n'\\'", "SELECT e'a' --gap\n'\\'",
 ]
 
@@ -517,16 +515,18 @@ BAD_SQL = [
 @pytest.mark.parametrize('name,source', [
     (f'bad.{ext}', source) for ext in ['ts', 'tsx', 'mts', 'cts'] for source in BAD_TS
 ] + [(f'bad.{ext}', 'const x=<div/>;') for ext in ['ts', 'mts', 'cts']]
-  + [('bad.tsx', 'const x=<div>')]
-  + [('bad.tsx', 'const x=<number>1;')]
+  + [('bad.tsx', 'const x=<div>'), ('bad.tsx', 'const x=<number>1;')]
+  + [(f'weird\\bad.{ext}', 'const x = ;\n') for ext in ['ts', 'tsx', 'mts', 'cts']]
   + [('bad.sql', source) for source in BAD_SQL])
 def test_typescript_sql_failure_names_file(name, source, tmp_path):
     subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
     (tmp_path / name).write_text(source)
-    subprocess.run(['git', '-C', str(tmp_path), 'add', name], check=True)
+    if '\\' in name:  # a normalized weird/bad.<ext> must not stand in for it
+        (tmp_path / 'weird').mkdir()
+        (tmp_path / name.replace('\\', '/')).write_text('const ok = 1;\n')
+    subprocess.run(['git', '-C', str(tmp_path), 'add', '.'], check=True)
     result = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/comment_share.py'),
-                             '--report', '--root', str(tmp_path)],
-                            capture_output=True, text=True)
+                             '--report', '--root', str(tmp_path)], capture_output=True, text=True)
     assert result.returncode == 1
     assert name in result.stderr
     assert not result.stdout
