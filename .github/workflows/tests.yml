@@ -34,11 +34,30 @@ jobs:
         # Recurse so a nested test helper cannot silently escape lint.
         run: find tests -type f -name '*.sh' -exec shellcheck {} +
 
-  suites:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: plan
+        uses: Nitjsefnie-Actions/test-ratchet/plan@ad6505d6da67b129dddbecb326f03d19e834c74c # v1.0.0
+        with:
+          tests: tests/**/test_*.py
+          times: .github/test-times.json
+          shards: 1
+
+  test:
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        python: ['3.15']
+        shard: ${{ fromJSON(needs.plan.outputs.matrix).shard }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -49,7 +68,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: '3.15'
+          python-version: ${{ matrix.python }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24.17.0'
@@ -60,108 +79,36 @@ jobs:
         run: |
           python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
           npm ci --ignore-scripts --no-audit --no-fund
-      - name: Run the regression suite
-        # Measure exactly one cell so the figure names one reproducible
-        # environment. The subprocess patch reaches isolated CLI children;
-        # wrapping the shell runner itself would measure none of its Python.
-        env:
-          COMMENT_RATCHET_MEASURE_COVERAGE: ${{ matrix.os == 'ubuntu-latest' }}
-          COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
-          COVERAGE_FILE: ${{ runner.temp }}/comment-ratchet-coverage/.coverage
-        run: |
-          if [ "$COMMENT_RATCHET_MEASURE_COVERAGE" = 'true' ]; then
-            mkdir -p "$RUNNER_TEMP/comment-ratchet-coverage"
-            python3 -m coverage run --rcfile=.coveragerc -m pytest -q
-          else
-            tests/run.sh
-          fi
-      - name: Record Python coverage
-        if: success() && matrix.os == 'ubuntu-latest'
-        env:
-          COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
-          COVERAGE_FILE: ${{ runner.temp }}/comment-ratchet-coverage/.coverage
-        run: |
-          python3 -m coverage combine --rcfile=.coveragerc
-          python3 -m coverage report --rcfile=.coveragerc --format=markdown --precision=1 >> "$GITHUB_STEP_SUMMARY"
-      # One Ubuntu uploader gives coverage-xml one measurement per run.
-      - name: Write the coverage XML
-        if: matrix.os == 'ubuntu-latest'
-        env:
-          COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
-          COVERAGE_FILE: ${{ runner.temp }}/comment-ratchet-coverage/.coverage
-        run: python3 -m coverage xml --rcfile=.coveragerc -o coverage.xml
-
-      - name: Upload the coverage XML
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - uses: Nitjsefnie-Actions/test-ratchet/run@ad6505d6da67b129dddbecb326f03d19e834c74c # v1.0.0
         with:
-          name: coverage-xml
-          path: coverage.xml
-          if-no-files-found: error
+          runner: pytest
+          tests: tests/**/test_*.py
+          times: .github/test-times.json
+          cell: ${{ matrix.os }}-py${{ matrix.python }}
+          shard: ${{ matrix.shard }}
+          source: .
 
-  # Informational, outside aggregate: refactors need a reviewer's judgment.
-  # Require a measured green PR; skipped suites supply no measurement.
-  diff-coverage:
-    needs: suites
-    if: ${{ !cancelled() && needs.suites.result == 'success' && github.event_name == 'pull_request' }}
+  report:
+    needs: test
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      COMMENT_RATCHET_COVERAGE_SOURCE_ROOT: ${{ github.workspace }}
-
-    # PR code stays read-only; the trusted coverage-comment workflow writes.
+    environment: ${{ github.event_name == 'push' && github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch && format('{0}-push', github.event.repository.default_branch) || '' }}
     permissions:
       contents: read
-
+      pull-requests: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Pin the measured merge tree; a later merge ref could differ.
-          # Full history supplies HEAD^1, the base tip merged into that tree.
-          ref: ${{ github.sha }}
           fetch-depth: 0
-          # Keep credentials out of later PR subprocesses.
           persist-credentials: false
-
-      - name: Download the coverage XML
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: Nitjsefnie-Actions/test-ratchet/report@ad6505d6da67b129dddbecb326f03d19e834c74c # v1.0.0
         with:
-          name: coverage-xml
-
-      # Hash-pinned coverage alone supplies the analyzer; a venv permits
-      # PEP 668 installs. No startup hook: this job only reads measurements.
-      - name: Install coverage tooling
-        run: |
-          python3 -m venv "$RUNNER_TEMP/coverage-venv"
-          awk '/^coverage==/{f=1} f{print; if ($0 !~ /\\$/) exit}' requirements-test.txt > "$RUNNER_TEMP/coverage.txt"
-          "$RUNNER_TEMP/coverage-venv/bin/python" -m pip install --require-hashes -r "$RUNNER_TEMP/coverage.txt"
-          echo "PATH=$RUNNER_TEMP/coverage-venv/bin:$PATH" >> "$GITHUB_ENV"
-
-      - name: Measure the coverage of this change
-        # HEAD^1 is the measured merge's base; event base.sha can lag and
-        # misattribute later base commits to this PR.
-        run: |
-          git diff --text --no-ext-diff --no-textconv --unified=0 HEAD^1 HEAD > patch.diff
-          python3 .github/scripts/diff_coverage.py \
-            --coverage coverage.xml \
-            --diff patch.diff > body.md
-          cat body.md >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Package the comment for the trusted commenter
-        # Event data stays in env, outside shell program text.
-        env:
-          COMMENT_RATCHET_PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          printf '%s\n' "$COMMENT_RATCHET_PR_NUMBER" > pr-number.txt
-
-      - name: Upload the comment for the trusted commenter
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: python-coverage-comment
-          path: |
-            body.md
-            pr-number.txt
-          if-no-files-found: error
+          github-token: ${{ github.token }}
+          cell: ubuntu-latest-py3.15
+          times: .github/test-times.json
+          push-key: ${{ secrets.MASTER_PUSH_DEPLOY_KEY }}
 
   comment-share:
     runs-on: ubuntu-latest
@@ -213,7 +160,7 @@ jobs:
     # cancelled ancestor. This tree has no classification skips, so every
     # skipped, failed, cancelled or missing leg must fold red.
     # actionlint reports independently; needs can only name this workflow's legs.
-    needs: [suites, shellcheck, comment-share, codeql, secrets, audit]
+    needs: [plan, test, report, shellcheck, comment-share, codeql, secrets, audit]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
