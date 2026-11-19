@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-LEGS = ('suites', 'shellcheck', 'comment-share', 'codeql', 'secrets', 'audit')
+LEGS = ('plan', 'test', 'report', 'shellcheck', 'comment-share', 'codeql', 'secrets', 'audit')
 
 
 def fold(results):
@@ -49,146 +49,10 @@ def workflow(name):
     return YAML(typ='base', pure=True).load(ROOT / '.github/workflows' / name)
 
 
-def condition(expression, *, successful=True, cancelled=False, **contexts):
-    import re
-    from types import SimpleNamespace
-    def namespace(value):
-        return SimpleNamespace(**{key: namespace(item) for key, item in value.items()}) if isinstance(value, dict) else value
-    source = expression.strip().removeprefix('${{').removesuffix('}}').strip()
-    source = source.replace('&&', ' and ').replace('||', ' or ')
-    source = re.sub(r'!(?!=)', ' not ', source)
-    return bool(eval(source, {'__builtins__': {}, 'success': lambda: successful,
-                             'cancelled': lambda: cancelled,
-                             'always': lambda: True},
-                     {key: namespace(value) for key, value in contexts.items()}))
-
-
 def shell(script, directory, **env):
     return subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], cwd=directory,
                           env=dict(os.environ, **{key: str(value) for key, value in env.items()}),
                           capture_output=True, text=True)
-
-
-@pytest.mark.parametrize('event,result,cancelled,want', [
-    ('pull_request', 'success', False, True),
-    ('push', 'success', False, False),
-    ('workflow_dispatch', 'success', False, False),
-    ('pull_request', 'failure', False, False),
-    ('pull_request', 'cancelled', False, False),
-    ('pull_request', 'skipped', False, False),
-    ('pull_request', 'success', True, False),
-])
-def test_coverage_artifact_only_from_measured_green_pr(event, result, cancelled, want):
-    config = workflow('tests.yml')
-    job = config['jobs']['diff-coverage']
-    assert job['needs'] == 'suites'
-    assert condition(job['if'], cancelled=cancelled,
-                     needs={'suites': {'result': result}},
-                     github={'event_name': event}) is want
-    assert job['permissions'] == {'contents': 'read'}
-    upload, = (step for step in job['steps']
-               if 'name' in step.get('with', {}) and 'path' in step['with'])
-    # No step-level bypass can turn a failed report into a posted number.
-    assert all('if' not in step for step in job['steps'])
-    consumer = workflow('coverage-comment.yml')
-    assert consumer['on']['workflow_run']['workflows'] == [config['name']]
-    download = next(step for step in consumer['jobs']['comment']['steps'] if 'uses' in step)
-    assert download['with']['name'] == upload['with']['name']
-
-
-@pytest.mark.parametrize('os_name,want', [('ubuntu-latest', True), ('macos-latest', False)])
-def test_coverage_xml_has_one_uploading_cell(os_name, want):
-    jobs = workflow('tests.yml')['jobs']
-    # Artifact names share one run-wide namespace; exactly one matrix cell
-    # supplies XML and exactly one job supplies the rendered comment.
-    xml, = (step for step in jobs['suites']['steps']
-            if 'name' in step.get('with', {}) and 'path' in step['with'])
-    assert condition(xml['if'], matrix={'os': os_name}) is want
-    writer = next(step for step in jobs['suites']['steps']
-                  if step.get('name') == 'Write the coverage XML')
-    assert condition(writer['if'], matrix={'os': os_name}) is want
-    download, = (step for step in jobs['diff-coverage']['steps']
-                 if 'name' in step.get('with', {}) and 'path' not in step['with'])
-    assert download['with']['name'] == xml['with']['name']
-
-
-def test_coverage_measures_isolated_action_subprocess(tmp_path):
-    from tests.test_ci_comment_baseline import init_repo, commit
-    repo = tmp_path / 'consumer'
-    repo.mkdir()
-    init_repo(repo)
-    (repo / 'x.py').write_text('# hi\nx=1\n')
-    commit(repo, 'source')
-    driver = tmp_path / 'driver.py'
-    driver.write_text('import os, subprocess, sys\n'
-                      f'env=dict(os.environ, GITHUB_WORKSPACE={str(repo)!r}, COMMENT_RATCHET_MODE="tighten")\n'
-                      f'subprocess.run([sys.executable,"-I",{str(ROOT / "run.py")!r}],env=env,check=True)\n')
-    config = ROOT / '.coveragerc'
-    env = dict(os.environ, COMMENT_RATCHET_COVERAGE_SOURCE_ROOT=str(ROOT),
-               COVERAGE_FILE=str(tmp_path / '.coverage'))
-    commands = [
-        [sys.executable, '-m', 'coverage', 'run', '--rcfile', str(config), str(driver)],
-        [sys.executable, '-m', 'coverage', 'combine', '--rcfile', str(config)],
-        [sys.executable, '-m', 'coverage', 'json', '--rcfile', str(config), '-o', str(tmp_path / 'coverage.json')],
-    ]
-    for command in commands:
-        result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True)
-        assert result.returncode == 0, result.stdout+result.stderr
-    files = json.loads((tmp_path / 'coverage.json').read_text())['files']
-    for name in ('run.py', 'scripts/ci/comment_baseline.py', 'scripts/ci/comment_share.py'):
-        assert files[name]['executed_lines'], name
-
-
-def comment_step(name):
-    return next(step['run'] for step in workflow('coverage-comment.yml')['jobs']['comment']['steps']
-                if step['name'] == name)
-
-
-@pytest.mark.parametrize('state', ['post', 'update', 'stale', 'wrong-pr', 'missing'])
-def test_coverage_comment_posts_only_to_current_event_pr(tmp_path, state):
-    (tmp_path / 'body.md').write_text('Python coverage: 80%. $(touch executed)\n')
-    (tmp_path / 'pr-number.txt').write_text('2' if state == 'wrong-pr' else '1')
-    binary = tmp_path / 'bin'
-    binary.mkdir()
-    stub = binary / 'gh'
-    stub.write_text(f'''#!{sys.executable}
-import json, os, pathlib, sys
-args=sys.argv[1:]
-endpoint=next((arg for arg in args if arg.startswith('repos/')), '')
-if '-X' in args:
-    record={{'endpoint':endpoint,'method':args[args.index('-X')+1],
-             'body':pathlib.Path('comment.md').read_text()}}
-    with open('writes.jsonl','a') as out: out.write(json.dumps(record)+'\\n')
-elif endpoint.endswith('/comments'):
-    if os.environ['COMMENT_STATE'] in ('update','missing'):
-        print(json.dumps({{'id':7,'user':{{'login':'github-actions[bot]'}},
-                           'body':'<!-- comment-ratchet-python-coverage -->\\nold coverage'}}))
-elif endpoint.endswith('/pulls/1'):
-    print('old-head' if os.environ['COMMENT_STATE']=='stale' else 'current-head')
-else:
-    sys.exit('unexpected gh request: '+repr(args))
-''')
-    stub.chmod(0o755)
-    name = 'Mark missing Python coverage' if state == 'missing' else 'Post or update the pull request comment'
-    result = shell(comment_step(name), tmp_path, GH_TOKEN='test-token', COMMENT_RATCHET_REPO='test/repo',
-                   COMMENT_RATCHET_PR_NUMBER='1', COMMENT_RATCHET_HEAD_SHA='current-head',
-                   COMMENT_STATE=state,
-                   PATH=str(binary)+os.pathsep+os.environ['PATH'])
-    assert result.returncode == (1 if state == 'wrong-pr' else 0), result.stderr
-    writes = tmp_path / 'writes.jsonl'
-    if state in ('stale','wrong-pr'):
-        assert not writes.exists()
-    else:
-        sent = json.loads(writes.read_text())
-        assert sent['endpoint'] == ('repos/test/repo/issues/1/comments' if state == 'post'
-                                     else 'repos/test/repo/issues/comments/7')
-        assert sent['method'] == ('POST' if state == 'post' else 'PATCH')
-        assert 'current-head' in sent['body']
-        if state == 'missing':
-            assert 'not measured' in sent['body']
-        else:
-            assert 'Python coverage: 80%.' in sent['body']
-    assert not (tmp_path / 'executed').exists()
 
 
 def test_actionlint_is_a_standalone_required_check():

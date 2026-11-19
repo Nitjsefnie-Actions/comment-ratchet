@@ -99,20 +99,20 @@ records never rise: a pull request lowers an entry, carries its change or keeps
 a changed file's base pair for the push run on `main` to lower, or its check
 fails naming the pair.
 
-## Python coverage comments
+## Test coverage
 
-The Ubuntu suites cell measures run.py and scripts/ci/*.py, including isolated
-Python subprocesses, using the hash-pinned coverage toolchain. macOS runs the
-same regression suite without measurement. Coverage is informational: there
-is no new coverage floor or required-checks file.
-
-For a green Ubuntu PR suite, the rendered patch-coverage report and PR number
-are uploaded as data. The report covers the lines the pull request adds or
-changes and names missed lines. The separate coverage-comment workflow holds
-the conversation write token, resolves the destination from the triggering
-event, validates the artifact's PR number, and posts or updates one comment.
-It checks out no PR code and executes nothing from the artifact. Missing
-measurement replaces an existing stale percentage with a not-measured marker.
+The `tests` workflow runs the suite through
+[test-ratchet](https://github.com/Nitjsefnie-Actions/test-ratchet) v1.0.0:
+`plan` splits the test files into shards balanced by recorded run time, each
+`test` job runs one shard's tests with coverage measured on Ubuntu and macOS,
+and `report` combines the shards' coverage, gates the `ubuntu-latest-py3.15`
+cell against the floor committed in `.github/ci-thresholds.json`, a floor that
+only rises, and comments on the pull request. `.coveragerc` limits the report
+to run.py and scripts/ci/*.py. A language with no record is reported and not
+gated. The records and `.github/test-times.json` move only on a push to
+`main` whose gate passed and whose artifacts all passed, committed with the
+`main-push` environment's deploy key. A fork's pull request gets its comment
+from `test-ratchet-comment.yml` once `tests` completes.
 
 ## House style
 
