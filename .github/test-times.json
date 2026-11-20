@@ -2,14 +2,14 @@
   "schema_version": 1,
   "cells": {
     "macos-latest-py3.15": {
-      "tests/test_action.py": 32.98,
-      "tests/test_ci.py": 9.96,
-      "tests/test_ci_comment_baseline.py": 57.92,
-      "tests/test_ci_comment_share.py": 90.73,
-      "tests/test_install_block.py": 5.16,
-      "tests/test_merge_repair.py": 22.87,
-      "tests/test_push_records.py": 35.29,
-      "tests/test_require_tight.py": 28.69
+      "tests/test_action.py": 27.83,
+      "tests/test_ci.py": 6.52,
+      "tests/test_ci_comment_baseline.py": 57.78,
+      "tests/test_ci_comment_share.py": 100.6,
+      "tests/test_install_block.py": 5.39,
+      "tests/test_merge_repair.py": 20.26,
+      "tests/test_push_records.py": 30.73,
+      "tests/test_require_tight.py": 26.6
     },
     "ubuntu-latest-py3.15": {
       "tests/test_action.py": 17.89,
