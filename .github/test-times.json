@@ -2,24 +2,24 @@
   "schema_version": 1,
   "cells": {
     "macos-latest-py3.15": {
-      "tests/test_action.py": 30.72,
-      "tests/test_ci.py": 7.21,
-      "tests/test_ci_comment_baseline.py": 49.1,
-      "tests/test_ci_comment_share.py": 68.08,
-      "tests/test_install_block.py": 3.43,
-      "tests/test_merge_repair.py": 14.34,
-      "tests/test_push_records.py": 23.96,
-      "tests/test_require_tight.py": 19.52
+      "tests/test_action.py": 36.48,
+      "tests/test_ci.py": 12.22,
+      "tests/test_ci_comment_baseline.py": 62.64,
+      "tests/test_ci_comment_share.py": 90.86,
+      "tests/test_install_block.py": 6.75,
+      "tests/test_merge_repair.py": 23.77,
+      "tests/test_push_records.py": 37.94,
+      "tests/test_require_tight.py": 29.05
     },
     "ubuntu-latest-py3.15": {
-      "tests/test_action.py": 12.98,
-      "tests/test_ci.py": 6.25,
-      "tests/test_ci_comment_baseline.py": 30.58,
-      "tests/test_ci_comment_share.py": 70.58,
-      "tests/test_install_block.py": 0.51,
-      "tests/test_merge_repair.py": 7.7,
-      "tests/test_push_records.py": 17.95,
-      "tests/test_require_tight.py": 8.95
+      "tests/test_action.py": 17.68,
+      "tests/test_ci.py": 8.54,
+      "tests/test_ci_comment_baseline.py": 41.23,
+      "tests/test_ci_comment_share.py": 95.15,
+      "tests/test_install_block.py": 0.72,
+      "tests/test_merge_repair.py": 10.18,
+      "tests/test_push_records.py": 24.81,
+      "tests/test_require_tight.py": 12.68
     }
   }
 }
