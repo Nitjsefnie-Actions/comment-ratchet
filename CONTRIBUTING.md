@@ -102,7 +102,7 @@ fails naming the pair.
 ## Test coverage
 
 The `tests` workflow runs the suite through
-[test-ratchet](https://github.com/Nitjsefnie-Actions/test-ratchet) v2.1.0:
+[test-ratchet](https://github.com/Nitjsefnie-Actions/test-ratchet) v2.2.0:
 `plan` splits the test files into shards balanced by recorded run time, each
 `test` job runs one shard's tests with coverage measured on Ubuntu and macOS,
 and `report` combines the shards' coverage, gates the `ubuntu-latest-py3.15`
