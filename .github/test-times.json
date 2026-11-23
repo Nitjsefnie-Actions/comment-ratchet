@@ -3,10 +3,12 @@
   "cells": {
     "macos-latest-py3.15": {
       "tests/test_action.py": [
-        27.34
+        27.34,
+        20.25
       ],
       "tests/test_ci.py": [
-        9.58
+        9.58,
+        5.59
       ],
       "tests/test_ci_comment_baseline.py": [
         44.3
@@ -26,33 +28,41 @@
         24.19
       ],
       "tests/test_require_tight.py": [
-        22.95
+        22.95,
+        16.74
       ]
     },
     "ubuntu-latest-py3.15": {
       "tests/test_action.py": [
-        14.2
+        14.2,
+        19.5
       ],
       "tests/test_ci.py": [
-        6.54
+        6.54,
+        9.4
       ],
       "tests/test_ci_comment_baseline.py": [
-        31.82
+        31.82,
+        45.76
       ],
       "tests/test_ci_comment_share.py": [
-        70.48
+        70.48,
+        105.4
       ],
       "tests/test_install_block.py": [
         0.64
       ],
       "tests/test_merge_repair.py": [
-        8.89
+        8.89,
+        11.74
       ],
       "tests/test_push_records.py": [
-        20.22
+        20.22,
+        29.49
       ],
       "tests/test_require_tight.py": [
-        10.98
+        10.98,
+        16.2
       ]
     }
   }
