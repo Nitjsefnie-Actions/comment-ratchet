@@ -11,7 +11,8 @@
         5.59
       ],
       "tests/test_ci_comment_baseline.py": [
-        44.3
+        44.3,
+        30.84
       ],
       "tests/test_ci_comment_share.py": [
         66.68
