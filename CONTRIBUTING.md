@@ -43,7 +43,7 @@ After changing ignore rules, seed a junk file in each kept directory, prove
 
 ## Getting it running
 
-Use Python 3.15 (any patch release), Node 24.17.0, Git, bash and ShellCheck.
+Use Python 3.15 (any patch release), Node 24.22.3, Git, bash and ShellCheck.
 Install the pinned toolchain into a venv; use the committed npm lockfile:
 
 ```bash
