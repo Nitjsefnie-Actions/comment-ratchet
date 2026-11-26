@@ -19,6 +19,7 @@
 .github/scripts/*
 !.github/scripts/retry.sh
 !.github/scripts/download.sh
+!.github/scripts/gitleaks_scan.sh
 !.gitleaks.toml
 !action.yml
 !run.py
@@ -53,6 +54,7 @@ tests/*
 !tests/test_install_block.py
 !tests/test_push_records.py
 !tests/test_release_dispatch.py
+!tests/test_gitleaks_scan.py
 !tests/run.sh
 !.github/comment-share.json
 !.github/size-baseline.json

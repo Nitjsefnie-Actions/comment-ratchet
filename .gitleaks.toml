@@ -4,8 +4,7 @@
 #
 # The default ruleset scans this repository's full history clean, so no
 # allowlist entry exists; the scan also passes --ignore-gitleaks-allow so an
-# inline allow comment cannot suppress its own finding. A pull request can
-# still add an allowlist here or in a .gitleaksignore and silence its own
-# finding; that route predates this file and is unchanged.
+# inline allow comment cannot suppress its own finding. The scan reads this
+# file and .gitleaksignore from the base branch, never the judged tree.
 [extend]
 useDefault = true
