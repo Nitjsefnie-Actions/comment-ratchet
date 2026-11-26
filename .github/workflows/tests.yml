@@ -5,8 +5,8 @@ name: tests
 # Contribution events live here so one aggregate can need every gate leg;
 # size-baseline.yml is size-ratchet's install block and reports on its own.
 #
-# No freshness or commit-scope step: their scripts and suites cannot fit the
-# tests/ tree budget at its record, which this change may not raise (issue 183).
+# No freshness or commit-scope step yet: issue 183 adds them with their
+# suites, planned against the tests/ tree budget.
 on:
   push:
     # A PR head already runs below; an unfiltered push would duplicate it.
