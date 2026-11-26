@@ -16,58 +16,35 @@ def policy():
     return comment_baseline
 
 
-@pytest.mark.parametrize('counts,baseline,want', [
-    ((15, 100), {}, False),
-    ((149999999999999999, 1000000000000000000), {}, False),
-    ((150000000000000001, 1000000000000000000), {}, True),
-    ((20, 100), {'x.py': [19, 100]}, True),
-    ((20, 80), {'x.py': [20, 100]}, False),
-    ((19, 20), {'x.py': [20, 100]}, False),
-    ((21, 100), {'x.py': [20, 100]}, True),
-    ((25, 100), {'x.py': [30, 100]}, False),
-    ((35, 200), {'x.py': [20, 100]}, False),
-    ((15, 100), {'x.py': [20, 100]}, False),
-    ((40, 200), {'x.py': [20, 100]}, False),
-    ((14, 100), {'x.py': [20, 100]}, False),
-    ((0, 0), {}, False),
-])
+@pytest.mark.parametrize('counts,baseline,want', [((15, 100), {}, False), ((149999999999999999, 1000000000000000000), {}, False),
+    ((150000000000000001, 1000000000000000000), {}, True), ((20, 100), {'x.py': [19, 100]}, True), ((20, 80), {'x.py': [20, 100]}, False),
+    ((19, 20), {'x.py': [20, 100]}, False), ((21, 100), {'x.py': [20, 100]}, True), ((25, 100), {'x.py': [30, 100]}, False),
+    ((35, 200), {'x.py': [20, 100]}, False), ((15, 100), {'x.py': [20, 100]}, False), ((40, 200), {'x.py': [20, 100]}, False),
+    ((14, 100), {'x.py': [20, 100]}, False), ((0, 0), {}, False),])
 def test_exact_boundary_and_rise(counts, baseline, want):
     assert bool(policy().violations({'x.py': counts}, baseline)) is want
 
 
 def test_tighten_lowers_drops_and_never_raises():
-    baseline = {'lower.py': [30, 100], 'drop.py': [20, 100],
-                'rise.py': [20, 100], 'gone.py': [20, 100]}
+    baseline = {'lower.py': [30, 100], 'drop.py': [20, 100], 'rise.py': [20, 100], 'gone.py': [20, 100]}
     measured = {'lower.py': (25, 100), 'drop.py': (15, 100), 'rise.py': (21, 100)}
-    assert policy().tightened(baseline, measured) == {
-        'lower.py': [25, 100], 'rise.py': [20, 100]}
+    assert policy().tightened(baseline, measured) == {'lower.py': [25, 100], 'rise.py': [20, 100]}
 
 
-@pytest.mark.parametrize('counts,want', [
-    ((30, 100), [30, 100]),
-    ((20, 50), [20, 50]),
-    ((40, 200), [40, 100]),
-    ((39, 50), [40, 100]),
-    ((41, 200), [40, 100]),
-    ((41, 100), [40, 100]),
-    ((40, 80), [40, 100]),
-    ((15, 100), None),
-    ((40, 267), None),
-])
+@pytest.mark.parametrize('counts,want', [((30, 100), [30, 100]), ((20, 50), [20, 50]), ((40, 200), [40, 100]), ((39, 50), [40, 100]),
+    ((41, 200), [40, 100]), ((41, 100), [40, 100]), ((40, 80), [40, 100]), ((15, 100), None), ((40, 267), None),])
 def test_tighten_requires_fewer_comments_without_a_share_rise(counts, want):
     expected = {} if want is None else {'x.py': want}
     assert policy().tightened({'x.py': [40, 100]}, {'x.py': counts}) == expected
 
 
-@pytest.mark.parametrize('entry', [[101, 100], [20.5, 100], [True, 100],
-                                   [20, 0], [-1, 100], [20], '20%', [20, 100, 1]])
+@pytest.mark.parametrize('entry', [[101, 100], [20.5, 100], [True, 100], [20, 0], [-1, 100], [20], '20%', [20, 100, 1]])
 def test_invalid_entry_refused(entry):
     with pytest.raises(ValueError, match='x.py'):
         policy().decode_records(json.dumps({'x.py': entry}))
 
 
-@pytest.mark.parametrize('path', ['../x.py', '/x.py', 'a/../x.py', './x.py',
-                                 'a//x.py', 'a\\x.py', '', 'a\nx.py'])
+@pytest.mark.parametrize('path', ['../x.py', '/x.py', 'a/../x.py', './x.py', 'a//x.py', 'a\\x.py', '', 'a\nx.py'])
 def test_record_paths_safe(path):
     with pytest.raises(ValueError):
         policy().decode_records(json.dumps({path: [20, 100]}))
@@ -80,8 +57,7 @@ def test_records_are_an_unambiguous_object(raw):
 
 
 def git(root, *args):
-    return subprocess.run(['git', '-C', str(root), *args], capture_output=True,
-                          text=True, check=True).stdout.strip()
+    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, text=True, check=True).stdout.strip()
 
 
 def init_repo(root):
@@ -113,8 +89,7 @@ def write_records(repo, data, name='.github/comment-share.json'):
 
 
 def cli(repo, *args):
-    return subprocess.run([sys.executable, str(ROOT / 'scripts/ci/comment_baseline.py'),
-                           '--root', str(repo), *args],
+    return subprocess.run([sys.executable, str(ROOT / 'scripts/ci/comment_baseline.py'), '--root', str(repo), *args],
                           capture_output=True, text=True, check=False)
 
 
@@ -131,8 +106,7 @@ def test_tighten_seeds_without_extra_step_and_serializes(repo):
     assert target.read_bytes() == first
 
 
-@pytest.mark.parametrize('code', ['x' * 62, 'x' * 58, 'y' * 60],
-                         ids=['growth', 'shrink', 'replacement'])
+@pytest.mark.parametrize('code', ['x' * 62, 'x' * 58, 'y' * 60], ids=['growth', 'shrink', 'replacement'])
 def test_code_only_edits_leave_records_byte_identical(repo, code):
     source = repo / 'x.py'
     # # + 39 c = 40 comment bytes; 60 x = 60 code bytes: (40, 100).
@@ -297,16 +271,9 @@ def test_base_language_is_classified_from_base_content(repo):
     assert result.returncode == 0, result.stderr
 
 
-@pytest.mark.parametrize('head,want,names', [
-    ({'x.py': [3, 6]}, 0, []),
-    ({'x.py': [4, 6]}, 1, ['x.py']),
-    ({}, 1, ['x.py']),
-    ({'x.py': [3, 6], 'extra.py': [2, 3]}, 1, ['extra.py']),
-    (None, 1, ['tighten']),
-    ({'x.py': [2, 6]}, 1, ['x.py']),
-    ({'x.py': [6, 12]}, 1, ['x.py']),
-    ({'extra.py': [2, 3]}, 1, ['x.py', 'extra.py']),
-])
+@pytest.mark.parametrize('head,want,names', [({'x.py': [3, 6]}, 0, []), ({'x.py': [4, 6]}, 1, ['x.py']), ({}, 1, ['x.py']),
+    ({'x.py': [3, 6], 'extra.py': [2, 3]}, 1, ['extra.py']), (None, 1, ['tighten']), ({'x.py': [2, 6]}, 1, ['x.py']),
+    ({'x.py': [6, 12]}, 1, ['x.py']), ({'extra.py': [2, 3]}, 1, ['x.py', 'extra.py']),])
 def test_absent_base_requires_exact_head_seed(repo, head, want, names):
     base = git(repo, 'rev-parse', 'HEAD')
     if head is not None:
@@ -419,8 +386,7 @@ def test_tighten_adds_new_records_without_raising_existing(repo):
     git(repo, 'add', '.')
     result = cli(repo, '--mode', 'tighten')
     assert result.returncode == 0, result.stderr
-    assert json.loads((repo / '.github/comment-share.json').read_bytes()) == {
-        'x.py': [2, 6], 'new.sh': [4, 4]}
+    assert json.loads((repo / '.github/comment-share.json').read_bytes()) == {'x.py': [2, 6], 'new.sh': [4, 4]}
 
 
 def test_tighten_reports_over_record_files_without_failing(repo):
@@ -444,14 +410,9 @@ def test_tighten_reports_over_record_files_without_failing(repo):
     assert records.read_bytes() == before
 
 
-@pytest.mark.parametrize('suffix,source,want', [
-    ('ts', '// c\nexport const x = 1;\n', [3, 18]),
-    ('tsx', '// c\nexport const x = 1;\n', [3, 18]),
-    ('mts', '// c\nexport const x = 1;\n', [3, 18]),
-    ('cts', '// c\nexport const x = 1;\n', [3, 18]),
-    ('d.ts', '/** c */declare const x: number;\n', [6, 27]),
-    ('sql', '-- c\nselect 1;\n', [3, 11]),
-])
+@pytest.mark.parametrize('suffix,source,want', [('ts', '// c\nexport const x = 1;\n', [3, 18]), ('tsx', '// c\nexport const x = 1;\n', [3, 18]),
+    ('mts', '// c\nexport const x = 1;\n', [3, 18]), ('cts', '// c\nexport const x = 1;\n', [3, 18]),
+    ('d.ts', '/** c */declare const x: number;\n', [6, 27]), ('sql', '-- c\nselect 1;\n', [3, 11]),])
 def test_typescript_sql_records_check_and_tighten(repo, suffix, source, want):
     name = f'new.{suffix}'
     base = git(repo, 'rev-parse', 'HEAD')

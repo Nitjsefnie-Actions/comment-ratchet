@@ -21,8 +21,7 @@ STANDALONE = 'owner/consumer/.github/workflows/comment-share.yml@refs/heads/main
 CALLER = 'owner/consumer/.github/workflows/tests.yml@refs/heads/main'
 # Read from action.yml's measuring step, the one run.py runs in: a key renamed
 # there but not in run.py fails the called rows; one moved out of it fails collection.
-MEASURING = next(step for step in YAML(typ='safe', pure=True).load(ROOT / 'action.yml')['runs']['steps']
-                 if step.get('id') == 'ratchet')
+MEASURING = next(step for step in YAML(typ='safe', pure=True).load(ROOT / 'action.yml')['runs']['steps'] if step.get('id') == 'ratchet')
 [JOB_REF_ENV] = [name for name, value in MEASURING['env'].items() if value == '${{ job.workflow_ref }}']
 # Records each call, then serves git@github.com:owner/consumer.git from the
 # local bare repository.
@@ -93,23 +92,16 @@ def run_action(repo, sha, key='test-key', **overrides):
     runner = repo.parent / 'runner'
     output = runner.parent / 'output'
     output.write_text('')
-    env = dict(os.environ, GITHUB_WORKSPACE=str(repo), GITHUB_EVENT_NAME='push',
-               GITHUB_REF='refs/heads/main', GITHUB_SHA=sha,
-               GITHUB_REPOSITORY='owner/consumer', GITHUB_OUTPUT=str(output),
-               RUNNER_TEMP=str(runner), COMMENT_RATCHET_DEFAULT_BRANCH='main',
-               COMMENT_RATCHET_MODE='auto', COMMENT_RATCHET_RECORDS=RECORDS,
-               COMMENT_RATCHET_PUSH_KEY=key,
-               COMMENT_RATCHET_PUSH_KEY_SET=str(bool(key)).lower(),
-               GITHUB_WORKFLOW='comment share', GITHUB_WORKFLOW_REF=STANDALONE,
-               **{JOB_REF_ENV: STANDALONE},
-               PATH=f'{repo.parent / "bin"}{os.pathsep}{os.environ["PATH"]}',
-               FAKE_SSH_LOG=str(repo.parent / 'ssh.log'),
-               FAKE_SSH_REPO=str(repo.parent / 'origin.git'))
+    env = dict(os.environ, GITHUB_WORKSPACE=str(repo), GITHUB_EVENT_NAME='push', GITHUB_REF='refs/heads/main', GITHUB_SHA=sha,
+               GITHUB_REPOSITORY='owner/consumer', GITHUB_OUTPUT=str(output), RUNNER_TEMP=str(runner), COMMENT_RATCHET_DEFAULT_BRANCH='main',
+               COMMENT_RATCHET_MODE='auto', COMMENT_RATCHET_RECORDS=RECORDS, COMMENT_RATCHET_PUSH_KEY=key,
+               COMMENT_RATCHET_PUSH_KEY_SET=str(bool(key)).lower(), GITHUB_WORKFLOW='comment share', GITHUB_WORKFLOW_REF=STANDALONE,
+               **{JOB_REF_ENV: STANDALONE}, PATH=f'{repo.parent / "bin"}{os.pathsep}{os.environ["PATH"]}',
+               FAKE_SSH_LOG=str(repo.parent / 'ssh.log'), FAKE_SSH_REPO=str(repo.parent / 'origin.git'))
     env.update(overrides)
     # As in action.yml, the measuring step never receives the key.
     measuring = {name: value for name, value in env.items() if name != 'COMMENT_RATCHET_PUSH_KEY'}
-    measured = subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo,
-                              env=measuring, capture_output=True, text=True, check=False)
+    measured = subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo, env=measuring, capture_output=True, text=True, check=False)
     if measured.returncode or output.read_text() != 'changed=true\n':
         return measured, None
     pushed = subprocess.run([sys.executable, '-I', str(ROOT / 'scripts/ci/push_records.py')],
@@ -128,8 +120,7 @@ def test_the_key_reaches_only_the_gated_push_step():
     assert [step['if'] for step in pushing] == ["steps.ratchet.outputs.changed == 'true'"]
     assert steps.index(measuring) < steps.index(pushing[0])
     assert measuring['env']['COMMENT_RATCHET_PUSH_KEY_SET'] == "${{ inputs.push-key != '' }}"
-    leaked = [step for step in steps if step not in pushing
-              and 'inputs.push-key }}' in str(step)]
+    leaked = [step for step in steps if step not in pushing and 'inputs.push-key }}' in str(step)]
     assert not leaked
 
 
@@ -146,8 +137,7 @@ def test_a_default_branch_push_tightens_and_pushes(consumer):
     assert json.loads(git(origin, 'show', f'{new}:{RECORDS}')) == {'x.py': [3, 6]}
     assert git(origin, 'log', '-1', '--format=%an <%ae>|%cn <%ce>|%B', new).strip() == (
         'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>|'
-        'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>|'
-        'ci: tighten comment-ratchet records')
+        'github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>|' 'ci: tighten comment-ratchet records')
     # The key file never outlives the push step.
     assert not list((repo.parent / 'runner').iterdir())
     import push_records
@@ -202,8 +192,7 @@ def test_a_shallow_checkout_reads_a_moved_branch(consumer):
     assert tip(origin) == newer
 
 
-@pytest.mark.parametrize('refused,want,verbs', [(False, 0, {'commit-tree', 'push'}),
-                                                (True, 1, {'commit-tree', 'push', 'fetch'})])
+@pytest.mark.parametrize('refused,want,verbs', [(False, 0, {'commit-tree', 'push'}), (True, 1, {'commit-tree', 'push', 'fetch'})])
 def test_no_git_call_receives_the_key(consumer, refused, want, verbs):
     repo, origin, sha = consumer
     if refused:
@@ -286,21 +275,16 @@ def test_an_empty_key_names_each_loose_entry(consumer, require_tight, want):
 # A called job's workflow_ref names the reusable file while github.workflow_ref
 # names the caller's; the workflow name decides nothing, and an unknown job ref
 # is a plain step.
-@pytest.mark.parametrize('workflow,job_ref,require_tight,called', [
-    ('tests', CALLER, 'true', False), ('tests', CALLER, 'false', False),
+@pytest.mark.parametrize('workflow,job_ref,require_tight,called', [('tests', CALLER, 'true', False), ('tests', CALLER, 'false', False),
     ('tests', '', 'true', False), ('tests', STANDALONE, 'true', True),
     ('tests', STANDALONE, 'false', True), ('Comment Share', STANDALONE, 'true', True)],
-    ids=['plain-step', 'plain-step-loose', 'unknown-job-ref', 'called', 'called-loose',
-         'caller-named-alike'])
-def test_only_a_called_keyless_run_leaves_loose_entries_to_the_standalone_run(
-        consumer, workflow, job_ref, require_tight, called):
+    ids=['plain-step', 'plain-step-loose', 'unknown-job-ref', 'called', 'called-loose', 'caller-named-alike'])
+def test_only_a_called_keyless_run_leaves_loose_entries_to_the_standalone_run(consumer, workflow, job_ref, require_tight, called):
     repo, origin, sha = consumer
     (repo / 'y.py').write_text('# hi\ny = 1\n')
     write_records(repo, {'x.py': [4, 6], 'y.py': [4, 6]})
     head = commit(repo, 'a second loose entry')
-    measured, pushed = run_action(repo, head, key='', GITHUB_WORKFLOW=workflow,
-                                  GITHUB_WORKFLOW_REF=CALLER,
-                                  **{JOB_REF_ENV: job_ref},
+    measured, pushed = run_action(repo, head, key='', GITHUB_WORKFLOW=workflow, GITHUB_WORKFLOW_REF=CALLER, **{JOB_REF_ENV: job_ref},
                                   COMMENT_RATCHET_REQUIRE_TIGHT=require_tight)
     assert measured.returncode == (not called and require_tight == 'true'), measured.stderr
     assert pushed is None
@@ -317,8 +301,7 @@ def test_only_a_called_keyless_run_leaves_loose_entries_to_the_standalone_run(
 
 def test_a_pull_request_never_pushes(consumer):
     repo, origin, sha = consumer
-    measured, pushed = run_action(repo, sha, GITHUB_EVENT_NAME='pull_request',
-                                  GITHUB_REF='refs/pull/1/merge', COMMENT_RATCHET_BASE_REF=sha)
+    measured, pushed = run_action(repo, sha, GITHUB_EVENT_NAME='pull_request', GITHUB_REF='refs/pull/1/merge', COMMENT_RATCHET_BASE_REF=sha)
     assert measured.returncode == 0, measured.stderr
     assert pushed is None
     assert tip(origin) == sha
@@ -366,8 +349,7 @@ def test_a_failed_tip_read_after_a_refusal_fails_naming_it(consumer, call):
     fake.chmod(0o755)
     # The branch stays at sha, so the ancestry call reads sha against itself.
     failing = call + [sha, sha] if call[0] == 'merge-base' else call
-    measured, pushed = run_action(repo, sha, FAKE_GIT_LOG=str(repo.parent / 'git.log'),
-                                  FAKE_GIT_FAIL=json.dumps(failing))
+    measured, pushed = run_action(repo, sha, FAKE_GIT_LOG=str(repo.parent / 'git.log'), FAKE_GIT_FAIL=json.dumps(failing))
     assert measured.returncode == 0, measured.stderr
     assert pushed.returncode == 1
     assert 'Traceback' not in pushed.stderr

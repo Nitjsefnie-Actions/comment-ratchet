@@ -26,8 +26,7 @@ def install_block():
 
 def evaluate(expression, context):
     """The GitHub expression subset the workflows use: ==, !=, &&, ||, (), format()."""
-    tokens = re.findall(r"'[^']*'|[=!]=|&&|\|\||[(),]|[\w.-]+", expression.strip()
-                        .removeprefix('${{').removesuffix('}}'))
+    tokens = re.findall(r"'[^']*'|[=!]=|&&|\|\||[(),]|[\w.-]+", expression.strip() .removeprefix('${{').removesuffix('}}'))
     position = 0
 
     def take():
@@ -83,15 +82,13 @@ def evaluate(expression, context):
 
 def test_install_block_shape():
     raw, block = install_block()
-    assert block['on'] == {'pull_request': '', 'push': {'branches': ['main', 'master']},
-                           'workflow_call': ''}
+    assert block['on'] == {'pull_request': '', 'push': {'branches': ['main', 'master']}, 'workflow_call': ''}
     job = block['jobs']['comment-share']
     checkout, action_step = job['steps']
     assert checkout['with']['ref'] == '${{ github.event.pull_request.head.sha || github.sha }}'
     assert checkout['if'] == action_step['if'] == GATE
     inputs = YAML(typ='safe', pure=True).load(ROOT / 'action.yml')['inputs']
-    assert action_step['with'] == {
-        **{name: str(item['default']) for name, item in inputs.items()},
+    assert action_step['with'] == {**{name: str(item['default']) for name, item in inputs.items()},
         'push-key': '${{ secrets.MASTER_PUSH_DEPLOY_KEY }}'}
     # The YAML parser strips pin comments: match the raw fence, and never a
     # sha or version.
@@ -99,25 +96,16 @@ def test_install_block_shape():
     assert len(pins) == 2, pins
 
 
-def context(event, ref_type='branch', ref_name='main', default='main', workflow='comment share',
-            sha='a1'):
-    return {'github.event_name': event, 'github.ref_type': ref_type,
-            'github.ref_name': ref_name, 'github.ref': f'refs/heads/{ref_name}',
-            'github.event.repository.default_branch': default,
-            'github.workflow': workflow, 'github.run_id': '42', 'github.sha': sha}
+def context(event, ref_type='branch', ref_name='main', default='main', workflow='comment share', sha='a1'):
+    return {'github.event_name': event, 'github.ref_type': ref_type, 'github.ref_name': ref_name, 'github.ref': f'refs/heads/{ref_name}',
+            'github.event.repository.default_branch': default, 'github.workflow': workflow, 'github.run_id': '42', 'github.sha': sha}
 
 
-@pytest.mark.parametrize('github,environment,runs', [
-    (context('pull_request', ref_name='1/merge'), '', True),
-    (context('push'), 'main-push', True),
-    (context('push', ref_name='master', default='master'), 'master-push', True),
-    (context('push', ref_name='master'), '', False),
-    (context('push', ref_type='tag'), '', False),
-    (context('workflow_dispatch'), '', False),
-    # A called run sees its caller's event under the caller's workflow name.
-    (context('push', workflow='tests'), 'main-push', True),
-    (context('pull_request', ref_name='1/merge', workflow='tests'), '', True),
-    (context('push', workflow='Comment Share'), 'main-push', True),
+@pytest.mark.parametrize('github,environment,runs', [(context('pull_request', ref_name='1/merge'), '', True),
+    (context('push'), 'main-push', True), (context('push', ref_name='master', default='master'), 'master-push', True),
+    (context('push', ref_name='master'), '', False), (context('push', ref_type='tag'), '', False), (context('workflow_dispatch'), '', False),
+(context('push', workflow='tests'), 'main-push', True), # A called run sees its caller's event under the caller's workflow name.
+    (context('pull_request', ref_name='1/merge', workflow='tests'), '', True), (context('push', workflow='Comment Share'), 'main-push', True),
 ], ids=['pull-request', 'main-push', 'master-push', 'other-branch', 'tag',
         'dispatch', 'called-push', 'called-pull-request', 'caller-named-alike'])
 def test_environment_binds_only_on_a_default_branch_push(github, environment, runs):
@@ -169,18 +157,15 @@ def test_install_block_check_on_a_master_default_consumer(tmp_path, require_tigh
     git(repo, 'branch', '-M', 'master')
     # Resolve the with: expressions as a pull-request run would: no
     # environment is bound, so the key reads empty.
-    resolved = {'${{ github.event.pull_request.base.sha }}': base,
-                '${{ secrets.MASTER_PUSH_DEPLOY_KEY }}': ''}
+    resolved = {'${{ github.event.pull_request.base.sha }}': base, '${{ secrets.MASTER_PUSH_DEPLOY_KEY }}': ''}
     inputs = {name: resolved.get(value, value) for name, value in raw_inputs.items()}
     inputs['require-tight'] = require_tight
-    env = {**metadata_env(repo, inputs=inputs),
-           'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_REF': 'refs/pull/1/merge',
+    env = {**metadata_env(repo, inputs=inputs), 'GITHUB_EVENT_NAME': 'pull_request', 'GITHUB_REF': 'refs/pull/1/merge',
            'COMMENT_RATCHET_DEFAULT_BRANCH': 'master'}
     assert env['COMMENT_RATCHET_PUSH_KEY_SET'] == 'false'
 
     def run():
-        return subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')],
-                              cwd=repo, env=env, capture_output=True, text=True)
+        return subprocess.run([sys.executable, '-I', str(ROOT / 'run.py')], cwd=repo, env=env, capture_output=True, text=True)
     # Removing comment bytes at a lower share lowers the record to (38, 98).
     source.write_text('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n')
     commit(repo, 'pr head removes comment bytes')
@@ -189,8 +174,7 @@ def test_install_block_check_on_a_master_default_consumer(tmp_path, require_tigh
     if want:
         assert '~ a.py: required [38, 98], recorded [40, 100]' in result.stderr
     else:
-        assert ('::notice::a.py: recorded [40, 100], tighten writes [38, 98]'
-                in result.stdout)
+        assert ('::notice::a.py: recorded [40, 100], tighten writes [38, 98]' in result.stdout)
     write_records(repo, {'a.py': [38, 98]})
     commit(repo, 'carry the lowered record')
     assert run().returncode == 0

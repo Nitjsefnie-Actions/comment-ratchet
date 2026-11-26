@@ -8,8 +8,7 @@ import pytest
 from tests.test_ci_comment_baseline import cli, commit, git, policy, repo, write_records
 
 
-@pytest.mark.parametrize('comments,code,want', [(45, 175, 1), (40, 170, 0),
-                                             (41, 164, 0)])
+@pytest.mark.parametrize('comments,code,want', [(45, 175, 1), (40, 170, 0), (41, 164, 0)])
 def test_default_branch_code_growth_sets_pr_limit(repo, comments, code, want):
     source = repo / 'x.py'
     # (40, 100).
@@ -50,13 +49,9 @@ def test_head_below_recorded_comments_carries_the_lowered_record(repo):
     commit(repo, 'carry the lowered record')
     assert cli(repo, '--base-ref', base).returncode == 0
 
-@pytest.mark.parametrize('base_comments,base_code,head_comments,head_code', [
-    (10, 90, 12, 88),
-    (0, 0, 1, 9),
-    (10, 90, 15, 85),
+@pytest.mark.parametrize('base_comments,base_code,head_comments,head_code', [(10, 90, 12, 88), (0, 0, 1, 9), (10, 90, 15, 85),
 ], ids=['below-target', 'empty-base', 'at-target'])
-def test_graduated_head_carries_the_dropped_entry(repo, base_comments, base_code,
-                                                  head_comments, head_code):
+def test_graduated_head_carries_the_dropped_entry(repo, base_comments, base_code, head_comments, head_code):
     source = repo / 'x.py'
     source.write_text(('#' + 'c' * (base_comments - 1) if base_comments else '')
                       + '\n' + 'x' * base_code + '\n')
@@ -322,9 +317,7 @@ def test_a_failed_merge_tree_fails_closed(repo, monkeypatch, capsys, status, kee
         if args[0] != 'merge-tree':
             return result
         # A fatal status fails even when stdout still names a merged tree.
-        return subprocess.CompletedProcess(result.args, status,
-                                           result.stdout if keep_tree else b'',
-                                           b'merge failed')
+        return subprocess.CompletedProcess(result.args, status, result.stdout if keep_tree else b'', b'merge failed')
 
     monkeypatch.setattr(policy(), 'git', failing)
     assert policy().main(['--root', str(repo), '--base-ref', base]) == 1
@@ -360,8 +353,7 @@ def test_a_conflicted_deletion_passes_until_resolved(repo):
     git(repo, 'checkout', '-q', 'pr')
     # Git keeps main's file in the conflicted tree; the merge cannot land.
     assert cli(repo, '--base-ref', base).returncode == 0
-    merged = subprocess.run(['git', '-C', str(repo), 'merge', '-q', 'main'],
-                            capture_output=True, check=False)
+    merged = subprocess.run(['git', '-C', str(repo), 'merge', '-q', 'main'], capture_output=True, check=False)
     assert merged.returncode == 1
     git(repo, 'rm', '-q', '.github/comment-share.json')
     commit(repo, 'resolve the conflict by deleting the records')
@@ -370,18 +362,14 @@ def test_a_conflicted_deletion_passes_until_resolved(repo):
     assert DELETED in result.stderr
 
 
-@pytest.mark.parametrize('head_source,head_records,want,message', [
-    ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {'x.py': [40, 100]}, 0,
+@pytest.mark.parametrize('head_source,head_records,want,message', [('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {'x.py': [40, 100]}, 0,
      '::notice::x.py: recorded [40, 100], tighten writes [38, 98]'),
     (None, {'x.py': [40, 100]}, 0, '::notice::x.py: recorded [40, 100], tighten writes no entry'),
     ('#' + 'c' * 44 + '\n' + 'x' * 60 + '\n', {'x.py': [40, 100]}, 1,
-     'x.py: (45, 105) exceeds its record [40, 100]'),
-    ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {'x.py': [41, 100]}, 1,
-     '~ x.py: required [38, 98], recorded [41, 100]'),
-    ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {}, 1, '+ x.py: required [38, 98]'),
+     'x.py: (45, 105) exceeds its record [40, 100]'), ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {'x.py': [41, 100]}, 1,
+     '~ x.py: required [38, 98], recorded [41, 100]'), ('#' + 'c' * 37 + '\n' + 'x' * 60 + '\n', {}, 1, '+ x.py: required [38, 98]'),
 ], ids=['lowered-kept', 'deleted-kept', 'growth', 'loosened', 'dropped'])
-def test_without_require_tight_a_pr_keeps_base_pairs_and_still_fails_growth(
-        repo, head_source, head_records, want, message):
+def test_without_require_tight_a_pr_keeps_base_pairs_and_still_fails_growth(repo, head_source, head_records, want, message):
     from tests.test_action import action
     source = repo / 'x.py'
     # (40, 100), above the target.
