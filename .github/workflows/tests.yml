@@ -6,7 +6,7 @@ name: tests
 # size-baseline.yml is size-ratchet's install block and reports on its own.
 #
 # No freshness or commit-scope step: their scripts and suites cannot fit the
-# tests/ tree budget at its record, so they land in a separate PR.
+# tests/ tree budget at its record, which this change may not raise (issue 183).
 on:
   push:
     # A PR head already runs below; an unfiltered push would duplicate it.
@@ -32,7 +32,7 @@ jobs:
       # ShellCheck ships with the image; a missing binary fails in seconds.
       - name: Check every shell file
         # Recurse so a nested test helper cannot silently escape lint.
-        run: find tests -type f -name '*.sh' -exec shellcheck {} +
+        run: find tests .github/scripts -type f -name '*.sh' -exec shellcheck {} +
 
   plan:
     runs-on: ubuntu-latest
@@ -58,7 +58,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         # 3.15 only: the action itself runs 3.15, so a 3.14 cell would test
         # an interpreter it never uses.
-        python: ['3.15']
+        python: ["3.15"]
         shard: ${{ fromJSON(needs.plan.outputs.matrix).shard }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
@@ -72,13 +72,13 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.22.3'
+          node-version: "24.22.3"
           package-manager-cache: false
       - name: Install the regression toolchain
         # --require-hashes pins artifacts; npm ci verifies its lockfile.
         run: |
-          python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
-          npm ci --ignore-scripts --no-audit --no-fund
+          .github/scripts/retry.sh python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
+          .github/scripts/retry.sh npm ci --ignore-scripts --no-audit --no-fund
       - uses: Nitjsefnie-Actions/test-ratchet/run@96562a47e9b7fe74b55cc70a4636d1b5d7b542e2 # v2.4.2
         with:
           runner: pytest
