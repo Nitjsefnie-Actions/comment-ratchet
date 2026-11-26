@@ -1,0 +1,9 @@
+# The [extend] line is load-bearing: it keeps gitleaks's default rules as
+# the gate. An allowlist file that replaces the default rules would
+# silently narrow the gate to nothing, so nothing here replaces them.
+#
+# The default ruleset scans this repository's full history clean, so no
+# allowlist entry exists; the scan also passes --ignore-gitleaks-allow so an
+# inline allow comment cannot suppress its own finding.
+[extend]
+useDefault = true

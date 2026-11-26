@@ -14,6 +14,12 @@
 .github/workflows/*
 !.github/workflows/claim.yml
 !.github/workflows/pr-gate.yml
+!.github/workflows/release-dispatch.yml
+!.github/scripts/
+.github/scripts/*
+!.github/scripts/retry.sh
+!.github/scripts/download.sh
+!.gitleaks.toml
 !action.yml
 !run.py
 !requirements.txt
@@ -34,6 +40,7 @@ scripts/ci/*
 !scripts/ci/js_comment_tokens.mjs
 !scripts/ci/aggregate_gate.py
 !scripts/ci/push_records.py
+!scripts/ci/release_dispatch.py
 !tests/
 tests/*
 !tests/__init__.py
@@ -45,6 +52,7 @@ tests/*
 !tests/test_merge_repair.py
 !tests/test_install_block.py
 !tests/test_push_records.py
+!tests/test_release_dispatch.py
 !tests/run.sh
 !.github/comment-share.json
 !.github/size-baseline.json

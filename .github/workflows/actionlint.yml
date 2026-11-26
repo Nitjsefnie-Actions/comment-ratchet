@@ -49,7 +49,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: actionlint-${{ github.ref }}
+  group: actionlint-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -83,8 +83,8 @@ jobs:
         # that URL serves at run time.
         run: |
           tarball="actionlint_${COMMENT_RATCHET_ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -fsSL --retry 3 -o "$tarball" \
-            "https://github.com/${COMMENT_RATCHET_ACTIONLINT_REPO}/releases/download/v${COMMENT_RATCHET_ACTIONLINT_VERSION}/${tarball}"
+          .github/scripts/download.sh \
+            "https://github.com/${COMMENT_RATCHET_ACTIONLINT_REPO}/releases/download/v${COMMENT_RATCHET_ACTIONLINT_VERSION}/${tarball}" "$tarball"
           echo "${COMMENT_RATCHET_ACTIONLINT_SHA256}  ${tarball}" | sha256sum -c -
           tar -xzf "$tarball" actionlint
           ./actionlint --version
@@ -97,7 +97,9 @@ jobs:
         # line is gone for the same reason -- it installed whatever bytes
         # the index served, unpinned, and the runner's preinstalled pip is
         # far newer than --require-hashes needs.
-        run: python3 -m pip install --require-hashes -r .github/workflows/requirements.txt
+        run: |
+          .github/scripts/retry.sh python3 -m pip install --require-hashes --only-binary=:all: \
+            -r .github/workflows/requirements.txt
 
       - name: actionlint
         id: actionlint
