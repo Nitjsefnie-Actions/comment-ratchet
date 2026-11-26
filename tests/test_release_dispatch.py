@@ -66,13 +66,13 @@ def _head():
     return subprocess.run(['git', 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True).stdout.strip()
 
 
-@pytest.mark.parametrize('version', ['2.1', '2.1.1-rc.1', '2.1.1+build', '', ' 2.1.1', '02.1.1', '2.01.1', '2.1.01', '-2.1.1', 'v2.1.1'])
+@pytest.mark.parametrize('version', ['2.1', '2.1.1-rc.1', '2.1.1+build', '', ' 2.1.1', '02.1.1', '2.01.1', '2.1.01', '-2.1.1', 'v2.1.1', '2.1\uff10.1'])
 def test_version_is_a_canonical_three_component_number(version):
     refuses(lambda: dispatch.version_tuple(version), 'version')
 
 
 def test_only_the_three_successors_of_the_numeric_latest_tag_release():
-    read = Read({TAGS: [[{'name': 'v2.9.0'}, {'name': 'v99.0.0-rc.1'}], [{'name': 'v2.10.0'}, {'name': 'not-a-release'}]]})
+    read = Read({TAGS: [[{'name': 'v2.9.0'}, {'name': 'v99.0.0-rc.1'}], [{'name': 'v2.10.0'}, {'name': 'v2.1.0'}, {'name': 'not-a-release'}]]})
     for version in ('2.10.1', '2.11.0', '3.0.0'):
         dispatch.validate_version(read, REPO, version)
     assert '--paginate' in read.calls[0] and '--slurp' in read.calls[0]
