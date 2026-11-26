@@ -19,6 +19,9 @@
         66.68,
         86.13
       ],
+      "tests/test_gitleaks_scan.py": [
+        5.54
+      ],
       "tests/test_install_block.py": [
         2.69,
         4.27,
@@ -34,9 +37,13 @@
         31.91,
         42.95
       ],
+      "tests/test_release_dispatch.py": [
+        0.33
+      ],
       "tests/test_require_tight.py": [
         22.95,
-        16.74
+        16.74,
+        36.55
       ]
     },
     "ubuntu-latest-py3.15": {
@@ -56,16 +63,23 @@
         70.48,
         105.4
       ],
+      "tests/test_gitleaks_scan.py": [
+        0.92
+      ],
       "tests/test_install_block.py": [
         0.64
       ],
       "tests/test_merge_repair.py": [
         8.89,
-        11.74
+        11.74,
+        6.51
       ],
       "tests/test_push_records.py": [
         20.22,
         29.49
+      ],
+      "tests/test_release_dispatch.py": [
+        0.04
       ],
       "tests/test_require_tight.py": [
         10.98,
