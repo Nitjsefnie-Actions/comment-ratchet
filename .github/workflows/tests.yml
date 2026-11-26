@@ -4,13 +4,14 @@ name: tests
 # the same real-subprocess suite with Python and the locked JS tokenizer.
 # Contribution events live here so one aggregate can need every gate leg;
 # size-baseline.yml is size-ratchet's install block and reports on its own.
+#
+# No freshness or commit-scope step: their scripts and suites cannot fit the
+# tests/ tree budget at its record, so they land in a separate PR.
 on:
   push:
-    # A PR head already runs below: an unfiltered push schedules the same
-    # commit a second time under another ref, beyond concurrency's reach.
+    # A PR head already runs below; an unfiltered push would duplicate it.
     branches: [main]
-  # Required checks must report even on documentation-only PRs. A trigger
-  # path filter would leave their context missing and block the merge.
+  # Required checks must report on every PR; a path filter would block it.
   pull_request:
   workflow_dispatch:
 permissions:
@@ -28,8 +29,7 @@ jobs:
         with:
           # Nothing pushes; later steps must not inherit a stored token.
           persist-credentials: false
-      # ShellCheck ships with the image. A missing binary fails in seconds;
-      # an apt mirror fetch could instead hang until the job timeout.
+      # ShellCheck ships with the image; a missing binary fails in seconds.
       - name: Check every shell file
         # Recurse so a nested test helper cannot silently escape lint.
         run: find tests -type f -name '*.sh' -exec shellcheck {} +
@@ -56,6 +56,8 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        # 3.15 only: the action itself runs 3.15, so a 3.14 cell would test
+        # an interpreter it never uses.
         python: ['3.15']
         shard: ${{ fromJSON(needs.plan.outputs.matrix).shard }}
     runs-on: ${{ matrix.os }}
@@ -63,19 +65,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Nothing in this job pushes. Leaving the token in .git/config
-          # lets any later subprocess reuse it.
+          # Nothing pushes; keep the token out of .git/config.
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.17.0'
+          node-version: '24.22.3'
           package-manager-cache: false
       - name: Install the regression toolchain
-        # --require-hashes pins artifacts as well as versions. npm ci takes
-        # the committed lockfile and verifies its integrity fields.
+        # --require-hashes pins artifacts; npm ci verifies its lockfile.
         run: |
           python3 -m pip install --require-hashes --only-binary=:all: -r requirements-test.txt
           npm ci --ignore-scripts --no-audit --no-fund
