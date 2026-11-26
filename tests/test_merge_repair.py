@@ -73,14 +73,12 @@ def test_touching_the_skewed_file_names_the_entry_to_carry(tmp_path):
     commit(origin, 'a pull request that touches a.py')
     result = cli(origin, '--base-ref', git(origin, 'rev-parse', 'HEAD~1'))
     assert result.returncode == 1
-    assert ('a.py: (19, 118) exceeds the target (15, 100); trim the file, '
-            'never record it') in result.stderr
+    assert ('a.py: (19, 118) exceeds the target (15, 100); trim the file, ' 'never record it') in result.stderr
     # The same PR trims the file below the target and passes.
     (origin / 'a.py').write_text('#' + 'c' * 13 + '\n' + 'x' * 85 + '\n')
     commit(origin, 'trim the file below the target')
     # The PR base is the skew-holding merge, one commit back.
-    assert cli(origin, '--base-ref', git(origin, 'rev-parse',
-                                         'HEAD~2')).returncode == 0
+    assert cli(origin, '--base-ref', git(origin, 'rev-parse', 'HEAD~2')).returncode == 0
 
 def test_merged_pair_exceeding_the_record_fails_touching_prs(tmp_path):
     # brA raises the share with no new comments; brB adds comments at an
@@ -210,8 +208,7 @@ def test_renamed_recorded_file_moves_its_entry(tmp_path):
     result = cli(origin, '--base-ref', base)
     assert result.returncode == 1
     assert '- a.py: recorded [40, 100]' in result.stderr
-    assert ('renamed.py: (40, 100) exceeds the target (15, 100); trim the '
-            'file, never record it') in result.stderr
+    assert ('renamed.py: (40, 100) exceeds the target (15, 100); trim the ' 'file, never record it') in result.stderr
     # The rename survives by trimming below the target and dropping the
     # entry.
     (origin / 'renamed.py').write_text('x' * 60 + '\n')

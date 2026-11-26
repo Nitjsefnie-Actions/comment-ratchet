@@ -14,8 +14,7 @@ LEGS = ('plan', 'test', 'report', 'shellcheck', 'comment-share', 'codeql', 'secr
 
 def fold(results):
     return subprocess.run([sys.executable, str(ROOT / 'scripts/ci/aggregate_gate.py')],
-                          env=dict(os.environ, COMMENT_RATCHET_NEEDS_JSON=json.dumps(results)),
-                          capture_output=True, text=True, check=False)
+                          env=dict(os.environ, COMMENT_RATCHET_NEEDS_JSON=json.dumps(results)), capture_output=True, text=True, check=False)
 
 
 def test_aggregate_all_success():
@@ -39,8 +38,7 @@ def test_aggregate_fails_closed(leg, state):
 @pytest.mark.parametrize('payload', ['null', '[]', '{}', 'not json'])
 def test_aggregate_bad_payload_fails(payload):
     result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci/aggregate_gate.py')],
-                            env=dict(os.environ, COMMENT_RATCHET_NEEDS_JSON=payload), capture_output=True,
-                            text=True, check=False)
+                            env=dict(os.environ, COMMENT_RATCHET_NEEDS_JSON=payload), capture_output=True, text=True, check=False)
     assert result.returncode == 1
 
 
@@ -51,8 +49,7 @@ def workflow(name):
 
 def shell(script, directory, **env):
     return subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], cwd=directory,
-                          env=dict(os.environ, **{key: str(value) for key, value in env.items()}),
-                          capture_output=True, text=True)
+                          env=dict(os.environ, **{key: str(value) for key, value in env.items()}), capture_output=True, text=True)
 
 
 def test_actionlint_is_a_standalone_required_check():
@@ -72,18 +69,13 @@ def test_actionlint_is_a_standalone_required_check():
     assert set(tests['aggregate']['needs']) == set(LEGS)
 
 
-@pytest.mark.parametrize('case,want', [
-    ('legacy', 0), ('legacy-invalid', 1), ('prefixed', 0),
-    ('prefixed-invalid', 1), ('prefixed-empty', 1), ('unset', 1),
-])
+@pytest.mark.parametrize('case,want', [('legacy', 0), ('legacy-invalid', 1), ('prefixed', 0),
+    ('prefixed-invalid', 1), ('prefixed-empty', 1), ('unset', 1),])
 def test_aggregate_environment_fallback_and_precedence(monkeypatch, case, want):
     good = json.dumps({name: {'result': 'success'} for name in LEGS})
     bad = 'not json'
-    legacy, prefixed = {
-        'legacy': (good, None), 'legacy-invalid': (bad, None),
-        'prefixed': (bad, good), 'prefixed-invalid': (good, bad),
-        'prefixed-empty': (good, ''), 'unset': (None, None),
-    }[case]
+    legacy, prefixed = {'legacy': (good, None), 'legacy-invalid': (bad, None), 'prefixed': (bad, good), 'prefixed-invalid': (good, bad),
+        'prefixed-empty': (good, ''), 'unset': (None, None),}[case]
     monkeypatch.delenv('NEEDS_JSON', raising=False)
     monkeypatch.delenv('COMMENT_RATCHET_NEEDS_JSON', raising=False)
     env = dict(os.environ)
@@ -91,8 +83,7 @@ def test_aggregate_environment_fallback_and_precedence(monkeypatch, case, want):
         env['NEEDS_JSON'] = legacy
     if prefixed is not None:
         env['COMMENT_RATCHET_NEEDS_JSON'] = prefixed
-    result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci/aggregate_gate.py')],
-                            env=env, capture_output=True, text=True, check=False)
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts/ci/aggregate_gate.py')], env=env, capture_output=True, text=True, check=False)
     assert result.returncode == want, result.stderr
     if want:
         assert 'CI aggregate failed:' in result.stderr
@@ -101,14 +92,10 @@ def test_aggregate_environment_fallback_and_precedence(monkeypatch, case, want):
 
 
 @pytest.mark.parametrize('event,ref_type,ref_name,environment,mode,require_tight,key', [
-    ('pull_request', 'branch', '1/merge', '', 'check', 'false', ''),
-    ('push', 'branch', 'main', 'main-push', 'tighten', 'true', 'deploy-key'),
-    ('push', 'branch', 'other', '', 'tighten', 'true', 'deploy-key'),
-    ('push', 'tag', 'main', '', 'tighten', 'true', 'deploy-key'),
-    ('workflow_dispatch', 'branch', 'main', '', 'check', 'true', ''),
-])
-def test_comment_share_commits_its_records_only_on_a_main_push(
-        event, ref_type, ref_name, environment, mode, require_tight, key):
+    ('pull_request', 'branch', '1/merge', '', 'check', 'false', ''), ('push', 'branch', 'main', 'main-push', 'tighten', 'true', 'deploy-key'),
+    ('push', 'branch', 'other', '', 'tighten', 'true', 'deploy-key'), ('push', 'tag', 'main', '', 'tighten', 'true', 'deploy-key'),
+    ('workflow_dispatch', 'branch', 'main', '', 'check', 'true', ''),])
+def test_comment_share_commits_its_records_only_on_a_main_push(event, ref_type, ref_name, environment, mode, require_tight, key):
     from tests.test_install_block import context, evaluate, install_block
     job = workflow('tests.yml')['jobs']['comment-share']
     # A workflow_call callee would read the environment secret empty.
@@ -121,8 +108,7 @@ def test_comment_share_commits_its_records_only_on_a_main_push(
     _, guard, action = job['steps']
     assert bool(evaluate(guard['if'], github)) is (environment == 'main-push')
     for secret in ('deploy-key', ''):
-        assert evaluate(guard['env']['COMMENT_RATCHET_PUSH_KEY_SET'],
-                        {**github, 'secrets.MASTER_PUSH_DEPLOY_KEY': secret}) is bool(secret)
+        assert evaluate(guard['env']['COMMENT_RATCHET_PUSH_KEY_SET'], {**github, 'secrets.MASTER_PUSH_DEPLOY_KEY': secret}) is bool(secret)
     assert action['uses'] == './'
     assert {name: evaluate(value, github) for name, value in action['with'].items()} == {
         'mode': mode, 'base-ref': base or 'a1', 'require-tight': require_tight, 'push-key': key}
@@ -140,14 +126,12 @@ def test_a_main_push_run_cancels_no_job_of_an_earlier_main_push_run():
     import re
     from tests.test_install_block import context, evaluate
     tests = workflow('tests.yml')
-    callees = [workflow(job['uses'].removeprefix('./.github/workflows/'))
-               for job in tests['jobs'].values() if 'uses' in job]
+    callees = [workflow(job['uses'].removeprefix('./.github/workflows/')) for job in tests['jobs'].values() if 'uses' in job]
     assert callees
 
     def group(config, event, sha, run_id, workflow=tests['name'], **fields):
         github = {**context(event, sha=sha, workflow=workflow, **fields), 'github.run_id': run_id}
-        return re.sub(r'\$\{\{(.*?)\}\}', lambda match: str(evaluate(match[1], github)),
-                      config['concurrency']['group'])
+        return re.sub(r'\$\{\{(.*?)\}\}', lambda match: str(evaluate(match[1], github)), config['concurrency']['group'])
 
     def groups(*run, **fields):
         return [group(config, *run, **fields) for config in [tests] + callees]
@@ -155,8 +139,7 @@ def test_a_main_push_run_cancels_no_job_of_an_earlier_main_push_run():
     # One run's groups are distinct, and none is shared with the next run.
     assert len(set(pushed + records)) == 2 * len(pushed), (pushed, records)
     # A pull request's newer run still cancels its older run, callees included.
-    older, newer = groups('pull_request', 'a1', '1', ref_name='1/merge'), groups(
-        'pull_request', 'b2', '2', ref_name='1/merge')
+    older, newer = groups('pull_request', 'a1', '1', ref_name='1/merge'), groups('pull_request', 'b2', '2', ref_name='1/merge')
     assert older[0] == newer[0]
     assert tests['concurrency']['cancel-in-progress'] == 'true'
     # A standalone run keeps its per-ref group, so a newer one on a branch cancels the older.
