@@ -147,8 +147,10 @@ jobs:
     uses: ./.github/workflows/codeql.yml # zizmor: ignore[self-repository]
     permissions:
       # The caller caps the reusable job's grants. Only analysis uploads
-      # need write access; the checkout and tests remain read-only.
+      # need write access; the checkout and tests remain read-only. Caps must
+      # cover every callee grant or the call fails to start.
       security-events: write
+      actions: read
       contents: read
   secrets:
     uses: ./.github/workflows/secrets.yml # zizmor: ignore[self-repository]
