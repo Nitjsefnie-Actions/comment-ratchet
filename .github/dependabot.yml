@@ -1,4 +1,5 @@
 version: 2
+# A pip bump stays ci(deps): CONTRIBUTING.md has no `build` type.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -7,6 +8,7 @@ updates:
       day: wednesday
       time: "04:30"
       timezone: Etc/UTC
+    open-pull-requests-limit: 5
     # Dependabot writes its own commit messages, so the convention in
     # CONTRIBUTING.md only holds for them if it is configured here. `include:
     # scope` is what appends the `(deps)`, giving `ci(deps): bump ...`.
@@ -35,6 +37,7 @@ updates:
       day: wednesday
       time: "04:30"
       timezone: Etc/UTC
+    open-pull-requests-limit: 5
     commit-message:
       prefix: ci
       include: scope
@@ -45,6 +48,7 @@ updates:
       day: wednesday
       time: "04:30"
       timezone: Etc/UTC
+    open-pull-requests-limit: 5
     commit-message:
       prefix: ci
       include: scope
@@ -55,6 +59,7 @@ updates:
       day: wednesday
       time: "04:30"
       timezone: Etc/UTC
+    open-pull-requests-limit: 5
     commit-message:
       prefix: ci
       include: scope
