@@ -104,7 +104,8 @@ def context(event, ref_type='branch', ref_name='main', default='main', workflow=
 @pytest.mark.parametrize('github,environment,runs', [(context('pull_request', ref_name='1/merge'), '', True),
     (context('push'), 'main-push', True), (context('push', ref_name='master', default='master'), 'master-push', True),
     (context('push', ref_name='master'), '', False), (context('push', ref_type='tag'), '', False), (context('workflow_dispatch'), '', False),
-(context('push', workflow='tests'), 'main-push', True), # A called run sees its caller's event under the caller's workflow name.
+    # A called run sees its caller's event under the caller's workflow name.
+    (context('push', workflow='tests'), 'main-push', True),
     (context('pull_request', ref_name='1/merge', workflow='tests'), '', True), (context('push', workflow='Comment Share'), 'main-push', True),
 ], ids=['pull-request', 'main-push', 'master-push', 'other-branch', 'tag',
         'dispatch', 'called-push', 'called-pull-request', 'caller-named-alike'])
