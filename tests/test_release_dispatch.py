@@ -52,6 +52,7 @@ class Clock:
         return self.elapsed
 
     def sleep(self, seconds):
+        assert seconds > 0
         self.sleeps.append(seconds)
         self.elapsed += seconds
 
@@ -197,6 +198,7 @@ def test_verify_still_refuses_a_missing_push_context_or_a_gate_only_ruleset():
     refuses(lambda: _clocked_verify(('gitleaks', 'gate', suites, near_miss), _head()),
             re.escape(f"registration grace: [{near_miss!r}, {suites!r}]"))
     refuses(lambda: _clocked_verify(('gate',), _head()), 'no push-checked contexts')
+    refuses(lambda: dispatch.verify(_verify(_head()), REPO, '9.0.0'), 'successor')
     refuses(lambda: dispatch.verify(Read({f'repos/{REPO}/branches/main': {'commit': { 'sha': 'f' * 40}}}), REPO, '2.10.1'), 'main moved to')
 
 
