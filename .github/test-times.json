@@ -31,7 +31,8 @@
       ],
       "tests/test_push_records.py": [
         24.19,
-        31.91
+        31.91,
+        42.95
       ],
       "tests/test_require_tight.py": [
         22.95,
