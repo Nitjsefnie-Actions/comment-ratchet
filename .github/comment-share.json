@@ -16,8 +16,8 @@
     2493
   ],
   ".github/workflows/pr-gate.yml": [
-    397,
-    1065
+    395,
+    1063
   ],
   ".github/workflows/scorecard.yml": [
     593,
@@ -28,8 +28,8 @@
     2543
   ],
   ".github/workflows/tests.yml": [
-    1927,
-    6138
+    1901,
+    6187
   ],
   "tests/run.sh": [
     18,
