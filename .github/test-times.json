@@ -19,10 +19,6 @@
         66.68,
         86.13
       ],
-      "tests/test_gitleaks_scan.py": [
-        5.54,
-        3.9
-      ],
       "tests/test_install_block.py": [
         2.69,
         4.27,
@@ -63,9 +59,6 @@
       "tests/test_ci_comment_share.py": [
         70.48,
         105.4
-      ],
-      "tests/test_gitleaks_scan.py": [
-        0.92
       ],
       "tests/test_install_block.py": [
         0.64
