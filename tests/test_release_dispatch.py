@@ -72,7 +72,7 @@ def test_version_is_a_canonical_three_component_number(version):
 
 
 def test_only_the_three_successors_of_the_numeric_latest_tag_release():
-    read = Read({TAGS: [[{'name': 'v2.9.0'}, {'name': 'v99.0.0-rc.1'}], [{'name': 'v2.10.3'}, {'name': 'v2.1.0'}, {'name': 'v2.10.1\uff10'}, {'name': 'v2\uff10.1.0'}, {'name': 'v2.1\uff10.0'}]]})
+    read = Read({TAGS: [[{'name': 'v2.9.0'}, {'name': 'v99.0.0-rc.1'}], [{'name': 'v2.10.3'}, {'name': 'v2.1.0'}, {'name': 'v2.10.1\uff10'}, {'name': 'v2\uff10.1.0'}, {'name': 'v2.1\uff10.0'}, {'name': 'v\uff12.1.0'}, {'name': 'v2.\uff11.0'}, {'name': 'v2.1.\uff11'}]]})
     for version in ('2.10.4', '2.11.0', '3.0.0'):
         dispatch.validate_version(read, REPO, version)
     assert '--paginate' in read.calls[0] and '--slurp' in read.calls[0]
