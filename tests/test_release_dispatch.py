@@ -66,17 +66,17 @@ def _head():
     return subprocess.run(['git', 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True).stdout.strip()
 
 
-@pytest.mark.parametrize('version', ['2.1', '2.1.1-rc.1', '2.1.1+build', '', ' 2.1.1', '02.1.1', '2.01.1', '2.1.01', '-2.1.1', 'v2.1.1', '2.1\uff10.1'])
+@pytest.mark.parametrize('version', ['2.1', '2.1.1-rc.1', '2.1.1+build', '', ' 2.1.1', '02.1.1', '2.01.1', '2.1.01', '-2.1.1', 'v2.1.1', '2\uff10.1.1', '2.1\uff10.1', '2.1.1\uff10'])
 def test_version_is_a_canonical_three_component_number(version):
     refuses(lambda: dispatch.version_tuple(version), 'version')
 
 
 def test_only_the_three_successors_of_the_numeric_latest_tag_release():
-    read = Read({TAGS: [[{'name': 'v2.9.0'}, {'name': 'v99.0.0-rc.1'}], [{'name': 'v2.10.0'}, {'name': 'v2.1.0'}, {'name': 'not-a-release'}]]})
-    for version in ('2.10.1', '2.11.0', '3.0.0'):
+    read = Read({TAGS: [[{'name': 'v2.9.0'}, {'name': 'v99.0.0-rc.1'}], [{'name': 'v2.10.3'}, {'name': 'v2.1.0'}, {'name': 'v2.10.1\uff10'}, {'name': 'not-a-release'}]]})
+    for version in ('2.10.4', '2.11.0', '3.0.0'):
         dispatch.validate_version(read, REPO, version)
     assert '--paginate' in read.calls[0] and '--slurp' in read.calls[0]
-    for version in ('2.10.0', '2.9.1', '2.10.2', '2.11.1', '4.0.0'):
+    for version in ('2.10.3', '2.9.1', '2.10.5', '2.11.1', '2.11.3', '4.0.0'):
         refuses(lambda version=version: dispatch.validate_version(read, REPO, version), 'successor')
     refuses(lambda: dispatch.validate_version(Read({TAGS: [[]]}), REPO, '1.0.0'), 'no vX.Y.Z')
     unread = Read({})
