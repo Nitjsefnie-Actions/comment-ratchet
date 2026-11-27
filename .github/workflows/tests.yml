@@ -28,8 +28,8 @@ jobs:
           persist-credentials: false
       # In a job the ruleset already requires: a green head must carry main's
       # gate-defining commits, and a workflow-name scope takes the ci type.
-      - uses: Nitjsefnie-Actions/pr-gate/freshness@96c803a71f5054ac993f47010cff3562a54300eb # v3.1.0
-      - uses: Nitjsefnie-Actions/pr-gate/commit-scopes@96c803a71f5054ac993f47010cff3562a54300eb # v3.1.0
+      - uses: Nitjsefnie-Actions/pr-gate/freshness@eb4991d7f92be7d2e55bb8b47aaaa24f09e98ca2 # v3.3.0
+      - uses: Nitjsefnie-Actions/pr-gate/commit-scopes@eb4991d7f92be7d2e55bb8b47aaaa24f09e98ca2 # v3.3.0
       # ShellCheck ships with the image; a missing binary fails in seconds.
       - name: Check every shell file
         # Recurse so a nested test helper cannot silently escape lint.
