@@ -20,7 +20,8 @@
         86.13
       ],
       "tests/test_gitleaks_scan.py": [
-        5.54
+        5.54,
+        3.9
       ],
       "tests/test_install_block.py": [
         2.69,
