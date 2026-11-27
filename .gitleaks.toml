@@ -2,9 +2,8 @@
 # the gate. An allowlist file that replaces the default rules would
 # silently narrow the gate to nothing, so nothing here replaces them.
 #
-# The default ruleset scans this repository's full history clean, so no
-# allowlist entry exists; the scan also passes --ignore-gitleaks-allow so an
-# inline allow comment cannot suppress its own finding. The scan reads this
-# file and .gitleaksignore from the base branch, never the judged tree.
+# Nitjsefnie-Actions/secret-scan reads this file and .gitleaksignore from the
+# commit the change is judged against, never the judged tree, and runs the
+# default rules without the allowlists that exempt a file by its path alone.
 [extend]
 useDefault = true
