@@ -22,7 +22,8 @@
       "tests/test_install_block.py": [
         2.69,
         4.27,
-        5.45
+        5.45,
+        7.45
       ],
       "tests/test_merge_repair.py": [
         11.92,
